@@ -83,6 +83,71 @@ def baseline() -> None:
     )
 
 
+banlist_app = typer.Typer(help="Build and inspect the AI-tell banlist.")
+app.add_typer(banlist_app, name="banlist")
+
+
+@banlist_app.command("build")
+def banlist_build(
+    prompts_sample: int = typer.Option(30, "--prompts-sample", help="Prompts for control set."),
+) -> None:
+    """Mine AI tells (control vs corpus) and merge into data/banlist.txt."""
+    from .banlist import build_banlist
+    from .config import MissingAssetError, load_config
+
+    try:
+        summary = build_banlist(load_config(), prompts_sample=prompts_sample)
+    except MissingAssetError as exc:
+        console.print(f"[red]{exc}[/red] — run: [bold]{exc.run_first}[/bold]")
+        raise typer.Exit(EXIT_MISSING) from exc
+    console.print(
+        f"Banlist rebuilt from {summary['control_files']} control files: "
+        f"{summary['mined_candidates']} mined, {summary['mined_added']} added, "
+        f"{summary['kept']} kept, {summary['dropped']} dropped, "
+        f"[bold]{summary['total_active']} active rules[/bold]."
+    )
+
+
+def _read_text_arg(source: str) -> str:
+    import sys
+
+    if source == "-":
+        return sys.stdin.read()
+    path = Path(source)
+    if not path.exists():
+        console.print(f"[red]file not found: {source}[/red]")
+        raise typer.Exit(EXIT_MISSING)
+    return path.read_text(encoding="utf-8")
+
+
+@app.command()
+def lint(source: str = typer.Argument(..., help="File to lint, or - for stdin.")) -> None:
+    """Deterministic lint of arbitrary text against the current banlist + gates."""
+    import json as _json
+
+    from .banlist import active_rules
+    from .config import load_config
+    from .corpus import BASELINE_PATH
+    from .lint import lint_text
+
+    cfg = load_config()
+    text = _read_text_arg(source)
+    baseline = None
+    if BASELINE_PATH.exists():
+        baseline = _json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    result = lint_text(text, active_rules(), baseline=baseline, gates=cfg.gates)
+    for span in result["spans"]:
+        console.print(f"  [red]{span['start']}-{span['end']}[/red] "
+                      f"“{span['text']}” ← [dim]{span['rule']}[/dim]")
+    for warning in result["warnings"]:
+        console.print(f"  [yellow]warn[/yellow] {warning['message']}")
+    verdict = "[red]HARD FAIL[/red]" if result["hard_fail"] else "[green]clean[/green]"
+    console.print(f"{verdict} — {len(result['spans'])} banlist hits, "
+                  f"{len(result['warnings'])} warnings")
+    if result["hard_fail"]:
+        raise typer.Exit(EXIT_GATE_FAIL)
+
+
 def main() -> None:
     """Console-script entry point."""
     app()
