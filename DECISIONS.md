@@ -11,7 +11,9 @@ Judgment calls made while implementing the spec, in rough order of appearance.
    corpus text, and `banlist.txt`/`baseline.json` are derived from it. The
    hard privacy constraint ("no corpus text in git history") wins over the
    narrower ignore list in the spec. `data/.gitkeep` is committed so the
-   directory exists on clone.
+   directory exists on clone. The ignore patterns are root-anchored
+   (`/corpus/`, `/data/*`, …) so `tests/fixtures/corpus/` stays tracked and
+   the `.gitkeep` negation actually works.
 
 3. **Two extra prompt templates: `openers.md` and `editor_stern.md`.**
    "Templates are data — code must not contain prompt strings", but the spec's
@@ -130,3 +132,21 @@ Judgment calls made while implementing the spec, in rough order of appearance.
     (re-written after each edit loop); the post-edit text also lands in
     `edited.md`, which doubles as the edit stage's resume artifact even when
     zero loops were needed. Rejected-change details go to `edit_log.json`.
+
+29. **MCP subprocesses use `sys.executable -m prose_forge.cli`,** not
+    `uv run forge`: same interpreter and environment as the server, works
+    from any cwd (including test workspaces), and adds no runtime dependency
+    on uv being on PATH. `.mcp.json` still launches the *server* via uv, as
+    specced.
+
+30. **mcp 2.0 compatibility.** The locked `mcp` SDK is 2.0, which renamed
+    `FastMCP` to `MCPServer` (same decorator surface). `mcp_server.py`
+    imports the 2.x name and falls back to the 1.x `FastMCP` path.
+
+31. **Unparseable eval-judge verdicts count as wrong answers** (and are
+    tallied in `parse_failures`), keeping the forced-binary accuracy math
+    honest without crashing an eval on one flaky response.
+
+32. **Eval paragraph scarcity.** If a source has fewer than K paragraphs in
+    the 80–200-word window, the sampler pads with the nearest-length
+    paragraphs rather than failing — small corpora can still be evaluated.

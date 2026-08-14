@@ -1,9 +1,9 @@
-# --- private prose: never committed ---
-corpus/
-runs/
-manuscript/
-data/
-!data/.gitkeep
+# --- private prose: never committed (root-anchored; tests/fixtures stay tracked) ---
+/corpus/
+/runs/
+/manuscript/
+/data/*
+!/data/.gitkeep
 .env
 
 # python
