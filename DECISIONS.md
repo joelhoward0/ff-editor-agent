@@ -109,3 +109,24 @@ Judgment calls made while implementing the spec, in rough order of appearance.
 24. **`context_tail_words` truncation is word-based** and cuts at a paragraph
     boundary when possible (never mid-sentence) so the drafter sees clean
     manuscript tail.
+
+25. **Literal banlist entries support `(a|b|c)` alternation groups.** The
+    shipped seed line `found (himself|herself|themselves)` is literal by
+    format but plainly intends alternation; a bare-parentheses group in a
+    literal is compiled as one, everything else is escaped.
+
+26. **Planner and tagger sample with the `judge` profile.** The config ships
+    exactly three sampling profiles (draft/judge/edit); planning and tagging
+    want low temperature, so they use `judge` (0.2) rather than growing the
+    config surface.
+
+27. **Diff-assert granularity.** Equal-length replace blocks are judged
+    sentence-pairwise (one illegal sentence doesn't discard a neighboring
+    legal rewrite); unequal blocks, deletions, and insertions are judged as a
+    block. Insertions are always illegal ("do not add sentences"). Healing
+    keeps the original sentences for every rejected change.
+
+28. **Edit-loop artifacts.** `lint.json` always reflects the *current* text
+    (re-written after each edit loop); the post-edit text also lands in
+    `edited.md`, which doubles as the edit stage's resume artifact even when
+    zero loops were needed. Rejected-change details go to `edit_log.json`.

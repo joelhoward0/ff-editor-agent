@@ -85,20 +85,6 @@ def load_triples() -> list[dict[str, Any]]:
     return out
 
 
-def _excerpt(text: str, max_words: int = 150) -> str:
-    """First ~max_words of a text, cut at a sentence boundary when possible."""
-    sentences = stats.split_sentences(text)
-    out: list[str] = []
-    count = 0
-    for sentence in sentences:
-        words = stats.word_count(sentence)
-        if out and count + words > max_words:
-            break
-        out.append(sentence)
-        count += words
-    return " ".join(out) if out else text[: max_words * 6]
-
-
 def example_pairs(scene_type: str, k: int = 2) -> list[dict[str, str]]:
     """Up to k before/after pairs (~150 words each) for the editor's few-shot.
 
@@ -118,8 +104,8 @@ def example_pairs(scene_type: str, k: int = 2) -> list[dict[str, str]]:
             continue
         pairs.append(
             {
-                "before": _excerpt(triple["ai_draft"]),
-                "after": _excerpt(gold["text"]),
+                "before": stats.excerpt(triple["ai_draft"]),
+                "after": stats.excerpt(gold["text"]),
             }
         )
     return pairs

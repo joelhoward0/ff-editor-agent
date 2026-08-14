@@ -131,6 +131,101 @@ def triples_build(
     )
 
 
+@app.command()
+def run(
+    prompt: str = typer.Argument(None, help="Chapter prompt file (prompts/<id>.md)."),
+    resume: str = typer.Option(None, "--resume", help="Run id to resume."),
+    pause_after_beats: bool = typer.Option(
+        False, "--pause-after-beats", help="Stop after the beat sheet for human review."
+    ),
+    opening: str = typer.Option(None, "--opening", help="File with a human opening line."),
+    run_id: str = typer.Option(None, "--run-id", hidden=True),
+) -> None:
+    """Run the chapter pipeline: plan → draft → select → lint → edit → report."""
+    from .config import MissingAssetError
+    from .pipeline import run_pipeline
+
+    try:
+        status = run_pipeline(
+            prompt,
+            run_id=run_id or resume,
+            resume=resume is not None,
+            pause_after_beats=pause_after_beats or None,
+            opening_file=opening,
+        )
+    except MissingAssetError as exc:
+        console.print(f"[red]{exc}[/red] — run: [bold]{exc.run_first}[/bold]")
+        raise typer.Exit(EXIT_MISSING) from exc
+    rid = status["run_id"]
+    if status.get("state") == "awaiting_beats":
+        console.print(
+            f"[yellow]Paused after beats.[/yellow] Edit runs/{rid}/beats.md, then "
+            f"[bold]forge run --resume {rid}[/bold]"
+        )
+        return
+    gates = status.get("gates") or {}
+    if gates.get("hard_fail"):
+        console.print(f"[red]Run {rid} finished with the hard gate FAILING.[/red] "
+                      f"See runs/{rid}/report.md")
+        raise typer.Exit(EXIT_GATE_FAIL)
+    warnings = gates.get("warnings") or []
+    warn_note = f" ({len(warnings)} soft warnings)" if warnings else ""
+    console.print(f"[green]Run {rid} complete.[/green]{warn_note} "
+                  f"Final text: runs/{rid}/final.md — accept with "
+                  f"[bold]forge accept {rid}[/bold]")
+
+
+@app.command()
+def accept(run_id: str = typer.Argument(..., help="Run id to accept.")) -> None:
+    """Append a finished run's final.md to the manuscript."""
+    from .config import MissingAssetError
+    from .pipeline import accept_run
+
+    try:
+        manuscript = accept_run(run_id)
+    except MissingAssetError as exc:
+        console.print(f"[red]{exc}[/red] — run: [bold]{exc.run_first}[/bold]")
+        raise typer.Exit(EXIT_MISSING) from exc
+    console.print(f"[green]Accepted.[/green] Appended to {manuscript}.")
+
+
+runs_app = typer.Typer(help="Inspect runs.")
+app.add_typer(runs_app, name="runs")
+
+
+@runs_app.command("list")
+def runs_list(limit: int = typer.Option(20, "--limit")) -> None:
+    """Most recent runs with stage/state."""
+    from rich.table import Table
+
+    from .runstate import list_runs
+
+    table = Table("run_id", "stage", "state", "updated_at")
+    for status in list_runs(limit):
+        table.add_row(
+            status.get("run_id", "?"), status.get("stage", "?"),
+            status.get("state", "?"), status.get("updated_at", ""),
+        )
+    console.print(table)
+
+
+@runs_app.command("show")
+def runs_show(run_id: str = typer.Argument(...)) -> None:
+    """One run's status, artifacts, and gate results."""
+    import json as _json
+
+    from .runstate import read_status, run_dir
+
+    status = read_status(run_id)
+    if status is None:
+        console.print(f"[red]unknown run: {run_id}[/red]")
+        raise typer.Exit(EXIT_MISSING)
+    console.print_json(_json.dumps(status))
+    d = run_dir(run_id)
+    artifacts = sorted(str(p.relative_to(d)) for p in d.rglob("*") if p.is_file())
+    console.print("artifacts: " + ", ".join(artifacts))
+
+
 def _read_text_arg(source: str) -> str:
     import sys
 

@@ -131,6 +131,19 @@ def punchline_para_rate(text: str) -> float:
     return short / len(paras)
 
 
+def excerpt(text: str, max_words: int = 150) -> str:
+    """First ~max_words of a text, cut at a sentence boundary when possible."""
+    out: list[str] = []
+    count = 0
+    for sentence in split_sentences(text):
+        words = word_count(sentence)
+        if out and count + words > max_words:
+            break
+        out.append(sentence)
+        count += words
+    return " ".join(out) if out else text[: max_words * 6]
+
+
 def compute_stats(text: str) -> dict[str, float]:
     """All baseline metrics (except banlist hits) for one text."""
     p50, p90 = para_len_percentiles(text)
