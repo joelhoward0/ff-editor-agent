@@ -266,6 +266,104 @@ def lint(source: str = typer.Argument(..., help="File to lint, or - for stdin.")
         raise typer.Exit(EXIT_GATE_FAIL)
 
 
+@app.command()
+def edit(source: str = typer.Argument(..., help="File to edit, or - for stdin.")) -> None:
+    """Ad-hoc lint + surgical edit of arbitrary text; edited text goes to stdout."""
+    from .banlist import active_rules
+    from .config import load_config
+    from .editor import edit_pass
+    from .lint import lint_text
+    from .triples import example_pairs
+
+    cfg = load_config()
+    text = _read_text_arg(source)
+    rules = active_rules()
+    result = lint_text(text, rules, gates=cfg.gates)
+    err = Console(stderr=True)
+    if not result["spans"]:
+        err.print("[green]No flagged spans — text unchanged.[/green]")
+        typer.echo(text, nl=False)
+        return
+    new_text, info = edit_pass(text, result["spans"], example_pairs("interiority"), cfg)
+    err.print(
+        f"Edited {len(result['spans'])} flagged spans in {info['attempts']} attempt(s); "
+        f"{len(info['rejected'])} out-of-span changes healed."
+    )
+    typer.echo(new_text, nl=False)
+
+
+eval_app = typer.Typer(help="Discrimination eval: judges guess HUMAN vs AI.")
+app.add_typer(eval_app, name="eval")
+
+
+@eval_app.command("run")
+def eval_run(k: int = typer.Option(10, "--k", help="Paragraphs per side.")) -> None:
+    """Blind HUMAN/AI test over K corpus + K pipeline paragraphs."""
+    from rich.table import Table
+
+    from .config import MissingAssetError, load_config
+    from .evalx import run_eval
+
+    cfg = load_config()
+    try:
+        result = run_eval(cfg, k=k)
+    except MissingAssetError as exc:
+        console.print(f"[red]{exc}[/red] — run: [bold]{exc.run_first}[/bold]")
+        raise typer.Exit(EXIT_MISSING) from exc
+    table = Table("judge", "accuracy")
+    for model, acc in result["accuracies"].items():
+        table.add_row(model, f"{acc:.2f}")
+    console.print(table)
+    verdict = "[green]PASS[/green]" if result["pass"] else "[red]FAIL[/red]"
+    console.print(
+        f"{verdict} mean accuracy {result['mean_accuracy']:.2f} "
+        f"(gate ≤ {result['gate']}), slop {result['slop']:.2f}/1k, "
+        f"ai_source={result['ai_source']}"
+    )
+    console.print(f"trend: {result['trend']}")
+    if not result["pass"]:
+        raise typer.Exit(EXIT_GATE_FAIL)
+
+
+@app.command()
+def status() -> None:
+    """Config summary, asset freshness, active runs, last eval."""
+    from .config import MissingAssetError, load_config
+    from .evalx import last_eval
+    from .runstate import asset_status, list_runs
+
+    try:
+        cfg = load_config()
+    except MissingAssetError as exc:
+        console.print(f"[red]{exc}[/red] — run: [bold]{exc.run_first}[/bold]")
+        raise typer.Exit(EXIT_MISSING) from exc
+    console.print("[bold]models[/bold]")
+    for slot in ("planner", "drafter_a", "drafter_b", "judge", "editor", "tagger"):
+        console.print(f"  {slot}: {cfg.models.slug(slot)}")
+    console.print(f"  eval_judges: {', '.join(cfg.models.eval_judges) or '(none)'}")
+    console.print("[bold]assets[/bold]")
+    for name, info in asset_status().items():
+        if info is None:
+            console.print(f"  {name}: [yellow]missing[/yellow]")
+        else:
+            count = f", {info['count']} items" if "count" in info else ""
+            console.print(f"  {name}: {info['updated_at']}{count}")
+    active = [s for s in list_runs(50) if s.get("state") in ("running", "awaiting_beats")]
+    console.print(f"[bold]active runs[/bold]: {len(active)}")
+    for status_row in active:
+        console.print(
+            f"  {status_row['run_id']}: {status_row.get('stage')}/{status_row.get('state')}"
+        )
+    latest = last_eval()
+    if latest:
+        console.print(
+            f"[bold]last eval[/bold]: mean {latest['mean_accuracy']:.2f} "
+            f"at {latest['timestamp']} (slop {latest['slop']:.2f}/1k)"
+        )
+    else:
+        console.print("[bold]last eval[/bold]: (none)")
+
+
 def main() -> None:
     """Console-script entry point."""
     app()
