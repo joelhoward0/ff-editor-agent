@@ -1,0 +1,16 @@
+couldn't help but
+let out a breath
+a breath he didn't know he'd been holding
+a breath she didn't know she'd been holding
+re:something (in|inside) (his|her|their) chest
+re:\ba (mix|mixture|blend) of \w+ and \w+
+the air was thick
+re:eyes? (gleamed|glinted|sparkled)
+a beat passed
+re:\bnot only\b[^.!?]{0,60}\bbut\b
+re:it wasn'?t [^.!?]{0,40}[,;—] it was
+the silence stretched
+found (himself|herself|themselves)
+somehow
+a testament to
+re:\bpalpable\b

@@ -1,0 +1,49 @@
+# prose-forge configuration.
+#
+# MODEL SLUGS ARE PLACEHOLDERS — verify current slugs at https://openrouter.ai/models
+# before real runs. Pick drafters and judges from DIFFERENT model families; never
+# put the same family in two adversarial roles (drafter vs judge vs editor vs
+# eval_judges), or self-preference bias will leak into selection and eval.
+
+models:
+  planner:   anthropic/claude-sonnet-4.6      # smart; structure & beats
+  drafter_a: moonshotai/kimi-k2               # low-slop prose family #1
+  drafter_b: deepseek/deepseek-chat           # low-slop prose family #2
+  judge:     google/gemini-2.5-pro            # selection; family != drafters
+  editor:    anthropic/claude-sonnet-4.6      # surgical edits; family != drafters
+  tagger:    google/gemini-2.5-flash          # cheap: tagging, beat mining
+  eval_judges:                                # families used NOWHERE above
+    - openai/gpt-5-mini
+    - qwen/qwen3-max
+
+sampling:
+  draft: {temperature: 1.0, min_p: 0.05, max_tokens: 4000}   # min_p passed through; ignore provider errors for unsupported params
+  judge: {temperature: 0.2, max_tokens: 1200}
+  edit:  {temperature: 0.5, max_tokens: 6000}
+
+provider_pinning: {}            # optional per-slot OpenRouter provider.order lists
+
+pipeline:
+  samples_per_drafter: 2        # best-of-4 total
+  context_tail_words: 2500      # previous-manuscript tail fed to drafter
+  retrieved_excerpts: 3         # POV/scene-type matched corpus excerpts
+  opening_line_mode: generate3  # human | generate3 | none
+  max_edit_loops: 2
+  pause_after_beats: false
+
+style_constraints:              # POSITIVE rules only; injected into drafter prompt
+  - Vary sentence length; include at least one sentence under five words per ~150 words.
+  - No scene may end on an abstraction; end on a concrete image, action, or line of dialogue.
+  - Interiority is shown through action and sensation, not named emotions.
+
+gates:
+  post_edit_banlist_hits_per_1k: 0      # hard fail
+  sent_len_std_tolerance: 0.20          # ±20% of baseline (soft warn)
+  em_dash_per_1k_max_ratio: 1.5         # vs baseline (soft warn)
+  punchline_para_rate_max_ratio: 1.15   # vs baseline (soft warn)
+  discrimination_max: 0.65              # eval command threshold
+
+paths:
+  corpus: corpus/
+  manuscript: manuscript/book.md
+  bible: bible/

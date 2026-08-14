@@ -1,0 +1,17 @@
+# --- private prose: never committed ---
+corpus/
+runs/
+manuscript/
+data/
+!data/.gitkeep
+.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
