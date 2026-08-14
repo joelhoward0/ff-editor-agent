@@ -160,6 +160,7 @@ def chat(
     sampling_key: str,
     response_prefix_strip: bool = True,
     model_override: str | None = None,
+    mock_key: str | None = None,
     config: Config | None = None,
 ) -> LLMResult:
     """Call the model bound to ``slot`` and return the full text (prefill included).
@@ -167,7 +168,9 @@ def chat(
     ``prefill`` is appended as a final assistant message (OpenRouter completes
     partial assistant messages); the returned text is always
     ``prefill + completion`` so callers never reassemble it themselves.
-    ``model_override`` bypasses the slot->slug lookup (used for eval judges).
+    ``model_override`` bypasses the slot->slug lookup (used for eval judges);
+    ``mock_key`` picks the mock fixture when one slot serves two purposes
+    (e.g. the tagger slot also mines beats).
     """
     cfg = config or load_config()
     model = model_override or cfg.models.slug(slot)
@@ -177,7 +180,7 @@ def chat(
 
     start = time.monotonic()
     if is_mock():
-        completion = _mock_response(slot)
+        completion = _mock_response(mock_key or slot)
         if prefill and response_prefix_strip:
             completion = _strip_echoed_prefill(completion, prefill)
         text = (prefill or "") + completion

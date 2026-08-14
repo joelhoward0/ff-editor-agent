@@ -108,6 +108,29 @@ def banlist_build(
     )
 
 
+triples_app = typer.Typer(help="Build beats→AI-draft→gold triples.")
+app.add_typer(triples_app, name="triples")
+
+
+@triples_app.command("build")
+def triples_build(
+    n: int = typer.Option(40, "--n", help="Number of corpus chunks to sample."),
+) -> None:
+    """Build data/triples/ from sampled corpus chunks."""
+    from .config import MissingAssetError, load_config
+    from .triples import build_triples
+
+    try:
+        summary = build_triples(load_config(), n=n)
+    except MissingAssetError as exc:
+        console.print(f"[red]{exc}[/red] — run: [bold]{exc.run_first}[/bold]")
+        raise typer.Exit(EXIT_MISSING) from exc
+    console.print(
+        f"Triples: {summary['built']} built, {summary['skipped']} existing, "
+        f"{summary['total']} total."
+    )
+
+
 def _read_text_arg(source: str) -> str:
     import sys
 
