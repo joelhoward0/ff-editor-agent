@@ -46,6 +46,43 @@ def init() -> None:
                   "[bold]forge ingest && forge baseline && forge banlist build[/bold].")
 
 
+@app.command()
+def ingest() -> None:
+    """Split corpus files into tagged scene chunks (data/chunks.jsonl)."""
+    from .config import MissingAssetError, load_config
+    from .corpus import ingest as run_ingest
+
+    try:
+        summary = run_ingest(load_config())
+    except MissingAssetError as exc:
+        console.print(f"[red]{exc}[/red] — run: [bold]{exc.run_first}[/bold]")
+        raise typer.Exit(EXIT_MISSING) from exc
+    console.print(
+        f"Ingested [bold]{summary['files']}[/bold] files → {summary['chunks']} chunks "
+        f"({summary['tagged']} tagged, {summary['reused']} reused)."
+    )
+
+
+@app.command()
+def baseline() -> None:
+    """Compute corpus style baseline (data/baseline.json)."""
+    from .config import MissingAssetError
+    from .corpus import build_baseline_asset
+
+    try:
+        result = build_baseline_asset()
+    except MissingAssetError as exc:
+        console.print(f"[red]{exc}[/red] — run: [bold]{exc.run_first}[/bold]")
+        raise typer.Exit(EXIT_MISSING) from exc
+    console.print(
+        f"Baseline over {result['chunk_count']} chunks / {result['word_count']} words: "
+        f"sent_len {result['sent_len_mean']:.1f}±{result['sent_len_std']:.1f}, "
+        f"em-dash/1k {result['em_dash_per_1k']:.2f}, "
+        f"dialogue {result['dialogue_ratio']:.2f}, "
+        f"self banlist hits/1k {result['banlist_hits_per_1k']:.2f}"
+    )
+
+
 def main() -> None:
     """Console-script entry point."""
     app()

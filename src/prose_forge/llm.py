@@ -226,6 +226,39 @@ def chat(
     return result
 
 
+TEMPLATES_DIR = Path("prompt_templates")
+
+
+def render_template(name: str, **values: Any) -> str:
+    """Load ``prompt_templates/<name>.md`` and substitute ``{key}`` placeholders.
+
+    Only the provided keys are replaced, so literal braces elsewhere in a
+    template (JSON examples, say) pass through untouched. Templates are data:
+    code contains no prompt strings beyond trivial glue.
+    """
+    text = (TEMPLATES_DIR / f"{name}.md").read_text(encoding="utf-8")
+    for key, value in values.items():
+        text = text.replace("{" + key + "}", str(value))
+    return text
+
+
+_JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def parse_json_response(text: str) -> dict[str, Any] | None:
+    """Best-effort strict-JSON extraction: strips code fences, finds the object."""
+    cleaned = text.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned)
+    match = _JSON_BLOCK.search(cleaned)
+    if not match:
+        return None
+    try:
+        parsed = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def cost_summary(run_dir: Path | str) -> dict[str, Any]:
     """Aggregate llm_log.jsonl for a run: calls, tokens, cost, per-stage breakdown."""
     log = Path(run_dir) / "llm_log.jsonl"

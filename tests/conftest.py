@@ -1,10 +1,15 @@
-"""Shared fixtures: a minimal validated Config and a mock-mode environment."""
+"""Shared fixtures: a minimal validated Config and mock-mode environments."""
 
 from __future__ import annotations
+
+import shutil
+from pathlib import Path
 
 import pytest
 
 from prose_forge.config import Config
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 MINIMAL_CONFIG: dict = {
     "models": {
@@ -28,6 +33,30 @@ MINIMAL_CONFIG: dict = {
 def cfg() -> Config:
     """A minimal validated Config with default pipeline/gates/paths."""
     return Config.model_validate(MINIMAL_CONFIG)
+
+
+@pytest.fixture
+def workspace(tmp_path, monkeypatch):
+    """A temp project root: templates, seed banlist, config, and the repo's
+    mock responses copied in at their normal relative paths; FORGE_MOCK on.
+
+    Tests may overwrite files under tests/fixtures/mock_responses/ freely —
+    it's a per-test copy.
+    """
+    from prose_forge import llm
+
+    shutil.copytree(REPO_ROOT / "prompt_templates", tmp_path / "prompt_templates")
+    shutil.copy(REPO_ROOT / "seed_banlist.txt", tmp_path / "seed_banlist.txt")
+    shutil.copy(REPO_ROOT / "config.yaml", tmp_path / "config.yaml")
+    shutil.copytree(
+        REPO_ROOT / "tests/fixtures/mock_responses",
+        tmp_path / "tests/fixtures/mock_responses",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("FORGE_MOCK", "1")
+    monkeypatch.delenv("FORGE_MOCK_DIR", raising=False)
+    llm.reset_mock_counters()
+    return tmp_path
 
 
 @pytest.fixture
