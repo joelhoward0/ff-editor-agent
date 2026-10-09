@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "build": "esbuild host.ts --bundle --format=iife --outfile=host.js --log-level=warning",
-    "test": "npm run build && node run.mjs"
+    "test": "npm run build && node run.mjs && node triage.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/ext-apps": "2.0.3",

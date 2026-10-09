@@ -47,7 +47,8 @@ def test_remote_tools_end_to_end():
             await s.initialize()
             names = {t.name for t in (await s.list_tools()).tools}
             assert names == {
-                "build_style_profile", "check_draft", "check_continuity", "compare_passages"
+                "build_style_profile", "check_draft", "check_continuity", "compare_passages",
+                "triage_scenes",
             }
             tools = {t.name: t for t in (await s.list_tools()).tools}
             meta = tools["compare_passages"].meta
@@ -57,6 +58,10 @@ def test_remote_tools_end_to_end():
             assert ui.mime_type == "text/html;profile=mcp-app" and "ui/message" in ui.text
             assert ui.meta["ui"]["prefersBorder"] is True
             assert "appInfo:" in ui.text  # host rejects ui/initialize without it
+            tmeta = tools["triage_scenes"].meta
+            assert tmeta["ui/resourceUri"] == tmeta["ui"]["resourceUri"] != uri
+            tui = (await s.read_resource(tmeta["ui"]["resourceUri"])).contents[0]
+            assert tui.mime_type == "text/html;profile=mcp-app" and "appInfo:" in tui.text
 
             async def call(tool, **args):
                 res = await s.call_tool(tool, args)
@@ -75,5 +80,8 @@ def test_remote_tools_end_to_end():
             assert cont["near_misses"] == [{"draft": "Marisole", "canon": "Marisol"}]
             pick = await s.call_tool("compare_passages", {"passages": ["one", "two"]})
             assert pick.structured_content["passages"] == ["one", "two"]
+            tri = await s.call_tool("triage_scenes", {"scenes": ["a b", "c d"]})
+            assert tri.structured_content["scenes"] == ["a b", "c d"]
+            assert "Scene 2" in tri.structured_content["if_no_view"]
 
     anyio.run(run)

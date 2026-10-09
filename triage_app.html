@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Triage a chapter</title>
+<style>
+  :root { --bg: #fbfaf7; --fg: #1f1d1a; --muted: #6f6a62; --line: #ddd8cf; --card: #fff; --accent: #8a4b14; --soft: #f3e6d6;
+          --keep: #2f6b3a; --story: #9a3a22; --voice: #8a4b14; --cut: #6f6a62; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1c1b19; --fg: #ece8e1; --muted: #a39d93; --line: #3a3733; --card: #252321; --accent: #e0a46a; --soft: #3a2c1f;
+            --keep: #7fc08a; --story: #e88a70; --voice: #e0a46a; --cut: #a39d93; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 120px; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  .context { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  .scene { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  .scene[data-d="keep"] { border-left-color: var(--keep); }
+  .scene[data-d="story"] { border-left-color: var(--story); }
+  .scene[data-d="voice"] { border-left-color: var(--voice); }
+  .scene[data-d="cut"] { border-left-color: var(--cut); opacity: .75; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .head b { font-size: 14px; }
+  .head span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .prose { font: 16px/1.6 Georgia, "Iowan Old Style", serif; margin: 8px 0; max-height: 8em; overflow: hidden; position: relative; }
+  .prose p { margin: 0 0 .45em; white-space: pre-wrap; }
+  .prose.open { max-height: none; }
+  .prose:not(.open)::after { content: ""; position: absolute; inset: auto 0 0 0; height: 2.5em; background: linear-gradient(transparent, var(--card)); }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  button { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button[aria-pressed="true"][data-v="keep"] { background: var(--keep); border-color: var(--keep); color: var(--bg); }
+  button[aria-pressed="true"][data-v="story"] { background: var(--story); border-color: var(--story); color: var(--bg); }
+  button[aria-pressed="true"][data-v="voice"] { background: var(--voice); border-color: var(--voice); color: var(--bg); }
+  button[aria-pressed="true"][data-v="cut"] { background: var(--cut); border-color: var(--cut); color: var(--bg); }
+  .link { border: 0; padding: 4px 0; color: var(--accent); }
+  textarea { width: 100%; min-height: 2.6em; margin-top: 8px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px;
+             background: var(--bg); color: inherit; font: 14px/1.5 system-ui, sans-serif; field-sizing: content; }
+  .quotes { margin: 6px 0 0; padding: 0; list-style: none; }
+  .quotes li { font-size: 13px; color: var(--muted); border-left: 2px solid var(--accent); padding: 2px 8px; margin: 4px 0; display: flex; justify-content: space-between; gap: 8px; }
+  .quotes li button { border: 0; padding: 0 4px; color: var(--muted); }
+  .foot { position: sticky; bottom: 0; background: var(--bg); display: flex; gap: 10px; align-items: center; padding: 10px 0 0; flex-wrap: wrap; }
+  .count { color: var(--muted); font-size: 13px; flex: 1; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); padding: 8px 14px; font-size: 14px; }
+  button:disabled { opacity: .45; cursor: default; }
+  .status { color: var(--muted); font-size: 13px; min-height: 1.5em; margin-top: 6px; }
+</style>
+</head>
+<body>
+<h1>Triage this chapter</h1>
+<p class="context" id="context">Mark each scene, add notes, and select any text to quote it in a note. Send when ready; you can change it and send again.</p>
+<div id="scenes" aria-live="polite"></div>
+<div class="foot">
+  <span class="count" id="count"></span>
+  <button id="send" type="button" class="primary" disabled>Send triage</button>
+</div>
+<div class="status" id="status" role="status"></div>
+<script>
+const HOST = "*"; // host origin is not known in advance; the host sandboxes us
+const DECISIONS = [["keep", "Keep"], ["story", "Fix story"], ["voice", "Fix voice"], ["cut", "Cut"]];
+const LABEL = Object.fromEntries(DECISIONS);
+let nextId = 1; const pending = new Map();
+let scenes = []; // {title, text, decision, note, quotes: []}
+let lastSent = null;
+
+function request(method, params) {
+  const id = nextId++;
+  window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, HOST);
+  return new Promise((res, rej) => pending.set(id, { res, rej }));
+}
+function notify(method, params = {}) { window.parent.postMessage({ jsonrpc: "2.0", method, params }, HOST); }
+
+window.addEventListener("message", (e) => {
+  const m = e.data; if (!m || m.jsonrpc !== "2.0") return;
+  if (m.id != null && !m.method && pending.has(m.id)) {
+    const p = pending.get(m.id); pending.delete(m.id); m.error ? p.rej(m.error) : p.res(m.result); return;
+  }
+  if (m.method === "ui/notifications/tool-input") render(m.params.arguments || {});
+  if (m.method === "ui/notifications/tool-result" && !scenes.length) render(m.params.structuredContent || {});
+  if (m.method === "ui/resource-teardown") window.parent.postMessage({ jsonrpc: "2.0", id: m.id, result: {} }, HOST);
+});
+
+function words(t) { return (t.match(/\S+/g) || []).length; }
+
+function render(args) {
+  if (!Array.isArray(args.scenes) || !args.scenes.length) return;
+  const titles = args.titles || [];
+  scenes = args.scenes.map((text, i) => ({ title: titles[i] || "", text: String(text), decision: null, note: "", quotes: [] }));
+  if (args.context) document.getElementById("context").textContent = args.context;
+  const box = document.getElementById("scenes"); box.innerHTML = "";
+  scenes.forEach((s, i) => {
+    const el = document.createElement("section"); el.className = "scene"; el.dataset.i = i;
+    el.innerHTML = `<div class="head"><b></b><span></span></div>
+      <div class="prose"></div>
+      <div class="row"><button type="button" class="link toggle">Read all</button></div>
+      <div class="row decisions" role="group" aria-label="Decision for scene ${i + 1}"></div>
+      <ul class="quotes"></ul>
+      <textarea placeholder="Note (optional): what's wrong, what should happen instead" aria-label="Note for scene ${i + 1}"></textarea>
+      <div class="row"><button type="button" class="link quote">Quote selected text</button></div>`;
+    el.querySelector("b").textContent = `Scene ${i + 1}${s.title ? ": " + s.title : ""}`;
+    el.querySelector(".head span").textContent = `${words(s.text)} words`;
+    const prose = el.querySelector(".prose");
+    s.text.split(/\n\s*\n/).filter((t) => t.trim()).forEach((t) => {
+      const para = document.createElement("p"); para.textContent = t.trim(); prose.appendChild(para);
+    });
+    if (words(s.text) <= 60) { // nothing to expand: show in full, no fade
+      el.querySelector(".prose").classList.add("open"); el.querySelector(".toggle").hidden = true;
+    }
+    el.querySelector(".toggle").addEventListener("click", (ev) => {
+      const open = el.querySelector(".prose").classList.toggle("open");
+      ev.target.textContent = open ? "Collapse" : "Read all";
+    });
+    const group = el.querySelector(".decisions");
+    DECISIONS.forEach(([v, label]) => {
+      const b = document.createElement("button"); b.type = "button"; b.dataset.v = v; b.textContent = label;
+      b.setAttribute("aria-pressed", "false");
+      b.addEventListener("click", () => { s.decision = s.decision === v ? null : v; refresh(); });
+      group.appendChild(b);
+    });
+    el.querySelector("textarea").addEventListener("input", (ev) => { s.note = ev.target.value; refresh(); });
+    // Selection lives in the prose; the button steals focus, so capture on mousedown.
+    el.querySelector(".quote").addEventListener("mousedown", (ev) => {
+      ev.preventDefault();
+      const sel = window.getSelection(); const q = sel ? sel.toString().trim() : "";
+      if (q && el.querySelector(".prose").contains(sel.anchorNode)) { s.quotes.push(q); sel.removeAllRanges(); refresh(); }
+      else document.getElementById("status").textContent = "Select some text in this scene first, then click Quote.";
+    });
+    box.appendChild(el);
+  });
+  refresh();
+}
+
+function refresh() {
+  document.querySelectorAll(".scene").forEach((el) => {
+    const s = scenes[+el.dataset.i];
+    el.dataset.d = s.decision || "";
+    el.querySelectorAll(".decisions button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === s.decision)));
+    const ul = el.querySelector(".quotes"); ul.innerHTML = "";
+    s.quotes.forEach((q, qi) => {
+      const li = document.createElement("li"); const span = document.createElement("span");
+      span.textContent = "“" + (q.length > 160 ? q.slice(0, 157) + "…" : q) + "”";
+      const x = document.createElement("button"); x.type = "button"; x.textContent = "✕"; x.setAttribute("aria-label", "Remove quote");
+      x.addEventListener("click", () => { s.quotes.splice(qi, 1); refresh(); });
+      li.append(span, x); ul.appendChild(li);
+    });
+  });
+  const marked = scenes.filter((s) => s.decision).length;
+  document.getElementById("count").textContent = scenes.length ? `${marked} of ${scenes.length} scenes marked` : "";
+  const msg = compose(); const btn = document.getElementById("send");
+  btn.disabled = msg === null || msg === lastSent;
+  btn.textContent = lastSent === null ? "Send triage" : "Send updated triage";
+}
+
+function compose() {
+  const touched = scenes.map((s, i) => [s, i]).filter(([s]) => s.decision || s.note.trim() || s.quotes.length);
+  if (!touched.length) return null;
+  return touched.map(([s, i]) => {
+    let line = `Scene ${i + 1}${s.title ? " (" + s.title + ")" : ""}: ${s.decision ? LABEL[s.decision].toUpperCase() : "NOTE"}`;
+    if (s.note.trim()) line += ` — ${s.note.trim()}`;
+    s.quotes.forEach((q) => { line += `\n  > "${q}"`; });
+    return line;
+  }).join("\n") + (scenes.length > touched.length
+    ? `\n(Unmarked: ${scenes.map((s, i) => i).filter((i) => !touched.some(([, j]) => j === i)).map((i) => i + 1).join(", ")})` : "");
+}
+
+async function send() {
+  const body = compose(); if (body === null) return;
+  const text = lastSent === null
+    ? `[prose-forge triage]\n${body}`
+    : `[prose-forge triage] Updated; this replaces my previous triage.\n${body}`;
+  const status = document.getElementById("status");
+  try {
+    await request("ui/message", { role: "user", content: [{ type: "text", text }] });
+    lastSent = body; status.textContent = "Sent to Claude. You can still change it and send again.";
+  } catch (err) {
+    try { await navigator.clipboard.writeText(text); status.textContent = "Couldn't send directly; copied to your clipboard. Paste it into the chat."; }
+    catch { status.textContent = "Couldn't send. Tell Claude your notes in the chat."; }
+  }
+  refresh();
+}
+document.getElementById("send").addEventListener("click", send);
+
+// Same measurement as the official App SDK: content height via max-content.
+let lastW = 0, lastH = 0, scheduled = false;
+function sendSize() {
+  if (scheduled) return; scheduled = true;
+  requestAnimationFrame(() => {
+    scheduled = false;
+    const html = document.documentElement, prev = html.style.height;
+    html.style.height = "max-content";
+    const h = Math.ceil(html.getBoundingClientRect().height); html.style.height = prev;
+    const w = Math.ceil(window.innerWidth);
+    if (w !== lastW || h !== lastH) { lastW = w; lastH = h; notify("ui/notifications/size-changed", { width: w, height: h }); }
+  });
+}
+
+// Handshake first; the host hides an app until it completes. appInfo is required.
+request("ui/initialize", {
+  protocolVersion: "2026-01-26",
+  appInfo: { name: "prose-forge-triage", version: "1.0.0" },
+  appCapabilities: { availableDisplayModes: ["inline"] },
+}).then(() => {
+  notify("ui/notifications/initialized", {});
+  sendSize();
+  new ResizeObserver(sendSize).observe(document.documentElement);
+}, (err) => {
+  document.getElementById("status").textContent =
+    "Couldn't connect to Claude (" + (err && err.message || "handshake failed") + "). Tell Claude your notes in the chat.";
+  console.error("prose-forge: ui/initialize failed", err);
+});
+</script>
+</body>
+</html>

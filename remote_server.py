@@ -28,15 +28,21 @@ from prose_forge.lint import lint_text  # noqa: E402
 SEED = banlist.load_rules(ROOT / "seed_banlist.txt")
 MAX_CHARS = 400_000  # ~70k words; bounds CPU per request
 
-COMPARE_HTML = (ROOT / "compare_app.html").read_text(encoding="utf-8")
-# Content-hashed URI: hosts may cache UI resources by URI, so every change to
-# the page gets a new address and no host keeps serving a stale picker.
-COMPARE_UI = f"ui://prose-forge/compare-{hashlib.sha256(COMPARE_HTML.encode()).hexdigest()[:12]}.html"
 apps = Apps()
-apps.add_html_resource(
-    COMPARE_UI, COMPARE_HTML,
-    title="Pick a version", description="Side-by-side prose picker", prefers_border=True,
-)
+
+
+def _ui(name: str, title: str, description: str) -> str:
+    """Register ROOT/<name>_app.html under a content-hashed ui:// URI: hosts may
+    cache UI resources by URI, so every change gets a new address and no host
+    keeps serving a stale copy."""
+    html = (ROOT / f"{name}_app.html").read_text(encoding="utf-8")
+    uri = f"ui://prose-forge/{name}-{hashlib.sha256(html.encode()).hexdigest()[:12]}.html"
+    apps.add_html_resource(uri, html, title=title, description=description, prefers_border=True)
+    return uri
+
+
+COMPARE_UI = _ui("compare", "Pick a version", "Side-by-side prose picker")
+TRIAGE_UI = _ui("triage", "Triage a chapter", "Scene-by-scene keep/fix/cut notes")
 
 
 # The legacy flat key too, as the reference server helper (registerAppTool) does
@@ -66,6 +72,35 @@ def compare_passages(
     }
 
 
+@apps.tool(resource_uri=TRIAGE_UI, meta={"ui/resourceUri": TRIAGE_UI})
+def triage_scenes(
+    scenes: list[str], titles: list[str] | None = None, context: str = ""
+) -> dict[str, Any]:
+    """Show the author a chapter split into scenes, inline, to mark each one
+    Keep / Fix story / Fix voice / Cut, add notes, and quote passages. Use it
+    when the author wants to review or mark up a draft before revising. Split
+    at the chapter's own scene breaks (e.g. a line of underscores or a lone
+    dash) and pass every scene's full text in order, unchanged, as plain prose
+    (drop the chapter heading and markdown markup); titles: optional 2-5 word
+    labels per scene. Their notes
+    arrive as one user message starting "[prose-forge triage]" (a later one
+    marked "Updated" replaces it). Wait for it, then revise in this order:
+    story fixes, then cuts, then voice passes only on scenes being kept; leave
+    Keep scenes untouched."""
+    if not 1 <= len(scenes) <= 40:
+        raise ValueError("pass 1 to 40 scenes")
+    _guard(**{f"scene_{i}": t for i, t in enumerate(scenes)})
+    listing = "\n".join(
+        f"Scene {i + 1}{': ' + titles[i] if titles and i < len(titles) and titles[i] else ''}"
+        f" — starts: {t.strip()[:80]}" for i, t in enumerate(scenes)
+    )
+    return {
+        "scenes": scenes, "titles": titles or [], "context": context,
+        "if_no_view": "List the scenes for the author and ask them to mark each "
+        "Keep / Fix story / Fix voice / Cut, with notes:\n" + listing,
+    }
+
+
 mcp = FastMCP(
     "prose-forge",
     extensions=[apps],
@@ -80,7 +115,9 @@ mcp = FastMCP(
         "starting at the hotspot; check again. Call check_continuity against "
         "prior chapters before handing a chapter back. To learn the author's taste, "
         "show 2-4 versions of a passage with compare_passages; their pick comes "
-        "back as a chat message starting [prose-forge pick]."
+        "back as a chat message starting [prose-forge pick]. To have the author mark "
+        "up a draft scene by scene, use triage_scenes; their notes come back "
+        "starting [prose-forge triage]."
     ),
 )
 

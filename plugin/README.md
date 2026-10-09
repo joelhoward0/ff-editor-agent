@@ -10,6 +10,9 @@ Makes Claude's fiction drafts sound like you, not like Claude.
 - **Side-by-side picker**: when a passage doesn't sound like you, Claude shows
   you a few versions right in the chat. Pick one or edit one; your choices go
   into a voice ledger that makes the next draft closer.
+- **Scene triage**: before revising, Claude shows the chapter scene by scene
+  in the chat. Mark each one Keep / Fix story / Fix voice / Cut, add a note,
+  quote the exact lines. Claude fixes story first, then cuts, then voice.
 - **prose-forge connector**: the checker behind it. It stores nothing and
   sees only the text Claude sends it in that moment.
 

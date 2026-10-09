@@ -59,6 +59,19 @@ automatic check hook).
    `new_names` for the author to confirm.
 6. **Hand back** the chapter and one line: verdict, tells fixed, new names.
 
+## Triage before revising
+
+When the author wants to review or mark up a draft (theirs or a Claude draft
+they haven't read), call `triage_scenes` with the chapter split at its own
+scene breaks. Wait for the `[prose-forge triage]` reply (an "Updated" one
+replaces the earlier). Then work it in order: `FIX STORY` scenes first (their
+note says what should happen; quoted lines show where), then `CUT`, then
+`FIX VOICE` with the drafting loop below, using `compare_passages` on their
+quoted lines. Leave `KEEP` scenes untouched. Unmarked scenes: ask, don't guess.
+If they prefer to annotate in Google Docs instead, read the doc with comments
+included and treat comments starting `story:`, `voice:`, `cut:` or `keep:` the
+same way.
+
 ## Learning their taste (voice ledger)
 
 The detector says *that* a passage drifts; only the author can say what they
