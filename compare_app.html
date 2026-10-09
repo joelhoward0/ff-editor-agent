@@ -27,23 +27,29 @@
   button:hover, .picked button { background: var(--accent); color: var(--bg); }
   button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
   .foot { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  button.primary { background: var(--accent); color: var(--bg); }
+  button:disabled { opacity: .45; cursor: default; }
+  #none.picked { background: var(--accent); color: var(--bg); }
   .foot input { flex: 1; min-width: 200px; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: inherit; }
   .status { color: var(--muted); font-size: 13px; margin-top: 8px; min-height: 1.5em; }
 </style>
 </head>
 <body>
 <h1 id="title">Which reads most like you?</h1>
-<p class="context" id="context">Pick one, or edit any version first. Your choice is sent back to Claude.</p>
+<p class="context" id="context">Pick one (edit it first if you like), then Send. You can change your pick after sending.</p>
 <div class="grid" id="grid" aria-live="polite"></div>
 <div class="foot">
   <input id="why" placeholder="Why? (optional: e.g. 'B sounds like James, A is too tidy')" aria-label="Why you picked it">
   <button id="none" type="button">None of these</button>
+  <button id="send" type="button" class="primary" disabled>Send pick</button>
 </div>
 <div class="status" id="status" role="status"></div>
 <script>
 const HOST = "*"; // host origin is not known in advance; the host sandboxes us
 let nextId = 1; const pending = new Map();
-let passages = []; let originals = []; let sent = false;
+let passages = []; let originals = [];
+let selected = null; // card index, "none", or null
+let lastSent = null; // text of the last message delivered to Claude
 
 function request(method, params) {
   const id = nextId++;
@@ -79,40 +85,62 @@ function render(args) {
       passages[i] = ta.value;
       card.querySelector(".note").textContent = ta.value === originals[i] ? (labels[i] || "") : "edited";
       card.querySelector(".note").classList.toggle("edited", ta.value !== originals[i]);
+      refresh();
     });
-    card.querySelector("button").addEventListener("click", () => pick(i));
+    card.querySelector("button").addEventListener("click", () => select(i));
     grid.appendChild(card);
   });
 }
 
-async function send(text) {
+function compose() {
+  if (selected === null) return null;
+  const why = document.getElementById("why").value.trim();
+  let msg;
+  if (selected === "none") {
+    msg = "None of these sound like me.";
+  } else {
+    const i = selected, label = String.fromCharCode(65 + i);
+    const edited = passages[i] !== originals[i];
+    const rejected = passages.map((_, j) => String.fromCharCode(65 + j)).filter((_, j) => j !== i);
+    msg = `I chose ${label}${edited ? " (with my edits)" : ""} over ${rejected.join(", ") || "nothing"}.`;
+    if (edited) msg += `\nMy edited version:\n"""\n${passages[i]}\n"""`;
+  }
+  if (why) msg += `\nWhy: ${why}`;
+  return msg;
+}
+
+// Selecting never sends; Send does. After a send you can still change your
+// mind: the next send is marked as replacing the previous pick.
+function refresh() {
+  document.querySelectorAll(".card").forEach((c) => c.classList.toggle("picked", +c.dataset.i === selected));
+  document.getElementById("none").classList.toggle("picked", selected === "none");
+  const btn = document.getElementById("send");
+  const msg = compose();
+  btn.disabled = msg === null || msg === lastSent;
+  btn.textContent = lastSent === null ? "Send pick" : "Send changed pick";
+}
+
+function select(choice) { selected = selected === choice ? null : choice; refresh(); }
+
+async function send() {
+  const body = compose(); if (body === null) return;
+  const text = lastSent === null
+    ? `[prose-forge pick] ${body}`
+    : `[prose-forge pick] Changed my mind; this replaces my previous pick. ${body}`;
   const status = document.getElementById("status");
   try {
     await request("ui/message", { role: "user", content: [{ type: "text", text }] });
-    sent = true; status.textContent = "Sent to Claude.";
+    lastSent = body; status.textContent = "Sent to Claude. You can still change your pick.";
   } catch (err) {
     try { await navigator.clipboard.writeText(text); status.textContent = "Couldn't send directly; copied to your clipboard. Paste it into the chat."; }
     catch { status.textContent = "Couldn't send. Tell Claude your pick in the chat."; }
   }
+  refresh();
 }
 
-function pick(i) {
-  if (sent) return;
-  document.querySelectorAll(".card").forEach((c) => c.classList.toggle("picked", +c.dataset.i === i));
-  const label = String.fromCharCode(65 + i);
-  const edited = passages[i] !== originals[i];
-  const why = document.getElementById("why").value.trim();
-  const rejected = passages.map((_, j) => String.fromCharCode(65 + j)).filter((_, j) => j !== i);
-  let msg = `[prose-forge pick] I chose ${label}${edited ? " (with my edits)" : ""} over ${rejected.join(", ") || "nothing"}.`;
-  if (why) msg += `\nWhy: ${why}`;
-  if (edited) msg += `\nMy edited version:\n"""\n${passages[i]}\n"""`;
-  send(msg);
-}
-document.getElementById("none").addEventListener("click", () => {
-  if (sent) return;
-  const why = document.getElementById("why").value.trim();
-  send(`[prose-forge pick] None of these sound like me.${why ? "\nWhy: " + why : ""}`);
-});
+document.getElementById("none").addEventListener("click", () => select("none"));
+document.getElementById("send").addEventListener("click", send);
+document.getElementById("why").addEventListener("input", refresh);
 
 // Same measurement as the official App SDK: content height via max-content.
 let lastW = 0, lastH = 0, scheduled = false;
