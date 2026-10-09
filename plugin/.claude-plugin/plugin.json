@@ -1,7 +1,7 @@
 {
   "name": "prose-forge",
-  "version": "0.1.0",
-  "description": "Makes Claude's fiction drafts sound like you: learns your style from your own prose, checks every draft for AI tells and style drift, and keeps names consistent with earlier chapters.",
+  "version": "0.2.0",
+  "description": "Makes Claude's fiction drafts sound like you: learns your style from your own prose, checks every draft for AI tells and style drift, and keeps names consistent with earlier chapters. Includes an inline side-by-side picker that learns your taste.",
   "author": {"name": "Joel Howard"},
   "hooks": "./hooks/hooks.json"
 }
