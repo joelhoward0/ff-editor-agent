@@ -14,3 +14,9 @@ def test_flags_respelling_and_new_name():
     result = check(DRAFT, CANON)
     assert result["near_misses"] == [{"draft": "Marisole", "canon": "Marisol"}]
     assert result["new_names"] == ["Odell"]
+
+
+def test_common_words_are_not_names():
+    canon = "His band played. Marisol said hi to Marisol's band."
+    draft = '"Hi," said Marisol. "Band practice?" Now she waited.'
+    assert check(draft, canon) == {"near_misses": [], "new_names": []}

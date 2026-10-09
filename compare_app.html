@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pick a version</title>
+<style>
+  :root { --bg: #fbfaf7; --fg: #1f1d1a; --muted: #6f6a62; --line: #ddd8cf; --card: #fff; --accent: #8a4b14; --picked: #f3e6d6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1c1b19; --fg: #ece8e1; --muted: #a39d93; --line: #3a3733; --card: #252321; --accent: #e0a46a; --picked: #3a2c1f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  .context { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .card.picked { border-color: var(--accent); background: var(--picked); }
+  .head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--muted); }
+  .head b { color: var(--fg); font-size: 14px; }
+  textarea { width: 100%; min-height: 220px; resize: vertical; border: 1px solid transparent; border-radius: 6px; padding: 6px; background: transparent; color: inherit;
+             font: 16px/1.6 Georgia, "Iowan Old Style", serif; field-sizing: content; }
+  textarea:hover, textarea:focus { border-color: var(--line); outline: none; }
+  textarea:focus-visible { outline: 2px solid var(--accent); }
+  .edited { color: var(--accent); }
+  button { font: inherit; font-size: 14px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+  button:hover, .picked button { background: var(--accent); color: var(--bg); }
+  button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .foot { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .foot input { flex: 1; min-width: 200px; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: inherit; }
+  .status { color: var(--muted); font-size: 13px; margin-top: 8px; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<h1 id="title">Which reads most like you?</h1>
+<p class="context" id="context">Pick one, or edit any version first. Your choice is sent back to Claude.</p>
+<div class="grid" id="grid" aria-live="polite"></div>
+<div class="foot">
+  <input id="why" placeholder="Why? (optional: e.g. 'B sounds like James, A is too tidy')" aria-label="Why you picked it">
+  <button id="none" type="button">None of these</button>
+</div>
+<div class="status" id="status" role="status"></div>
+<script>
+const HOST = "*"; // host origin is not known in advance; the host sandboxes us
+let nextId = 1; const pending = new Map();
+let passages = []; let originals = []; let sent = false;
+
+function request(method, params) {
+  const id = nextId++;
+  window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, HOST);
+  return new Promise((res, rej) => pending.set(id, { res, rej }));
+}
+function notify(method, params = {}) { window.parent.postMessage({ jsonrpc: "2.0", method, params }, HOST); }
+
+window.addEventListener("message", (e) => {
+  const m = e.data; if (!m || m.jsonrpc !== "2.0") return;
+  if (m.id != null && !m.method && pending.has(m.id)) {
+    const p = pending.get(m.id); pending.delete(m.id); m.error ? p.rej(m.error) : p.res(m.result); return;
+  }
+  if (m.method === "ui/notifications/tool-input") render(m.params.arguments || {});
+  if (m.method === "ui/notifications/tool-result" && !passages.length) render(m.params.structuredContent || {});
+  if (m.method === "ui/resource-teardown") window.parent.postMessage({ jsonrpc: "2.0", id: m.id, result: {} }, HOST);
+});
+
+function render(args) {
+  if (!Array.isArray(args.passages) || !args.passages.length) return;
+  passages = args.passages.map(String); originals = passages.slice();
+  const labels = args.labels || [];
+  if (args.context) document.getElementById("context").textContent = args.context;
+  const grid = document.getElementById("grid"); grid.innerHTML = "";
+  passages.forEach((text, i) => {
+    const label = String.fromCharCode(65 + i);
+    const card = document.createElement("section"); card.className = "card"; card.dataset.i = i;
+    card.innerHTML = `<div class="head"><b>${label}</b><span class="note"></span></div>
+      <textarea aria-label="Version ${label}"></textarea><button type="button">Pick ${label}</button>`;
+    card.querySelector(".note").textContent = labels[i] || "";
+    const ta = card.querySelector("textarea"); ta.value = text;
+    ta.addEventListener("input", () => {
+      passages[i] = ta.value;
+      card.querySelector(".note").textContent = ta.value === originals[i] ? (labels[i] || "") : "edited";
+      card.querySelector(".note").classList.toggle("edited", ta.value !== originals[i]);
+    });
+    card.querySelector("button").addEventListener("click", () => pick(i));
+    grid.appendChild(card);
+  });
+}
+
+async function send(text) {
+  const status = document.getElementById("status");
+  try {
+    await request("ui/message", { role: "user", content: { type: "text", text } });
+    sent = true; status.textContent = "Sent to Claude.";
+  } catch (err) {
+    try { await navigator.clipboard.writeText(text); status.textContent = "Couldn't send directly; copied to your clipboard. Paste it into the chat."; }
+    catch { status.textContent = "Couldn't send. Tell Claude your pick in the chat."; }
+  }
+}
+
+function pick(i) {
+  if (sent) return;
+  document.querySelectorAll(".card").forEach((c) => c.classList.toggle("picked", +c.dataset.i === i));
+  const label = String.fromCharCode(65 + i);
+  const edited = passages[i] !== originals[i];
+  const why = document.getElementById("why").value.trim();
+  const rejected = passages.map((_, j) => String.fromCharCode(65 + j)).filter((_, j) => j !== i);
+  let msg = `[prose-forge pick] I chose ${label}${edited ? " (with my edits)" : ""} over ${rejected.join(", ") || "nothing"}.`;
+  if (why) msg += `\nWhy: ${why}`;
+  if (edited) msg += `\nMy edited version:\n"""\n${passages[i]}\n"""`;
+  send(msg);
+}
+document.getElementById("none").addEventListener("click", () => {
+  if (sent) return;
+  const why = document.getElementById("why").value.trim();
+  send(`[prose-forge pick] None of these sound like me.${why ? "\nWhy: " + why : ""}`);
+});
+
+new ResizeObserver(() => notify("ui/notifications/size-changed", {
+  width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight,
+})).observe(document.documentElement);
+
+request("ui/initialize", {
+  protocolVersion: "2026-01-26",
+  clientInfo: { name: "prose-forge-compare", version: "1.0.0" },
+  appCapabilities: { availableDisplayModes: ["inline"] },
+}).then(() => notify("ui/notifications/initialized", {}));
+</script>
+</body>
+</html>

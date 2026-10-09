@@ -59,5 +59,29 @@ automatic check hook).
    `new_names` for the author to confirm.
 6. **Hand back** the chapter and one line: verdict, tells fixed, new names.
 
+## Learning their taste (voice ledger)
+
+The detector says *that* a passage drifts; only the author can say what they
+would actually write. When `check_draft` returns a hotspot, or the author asks
+"which sounds like me?":
+
+1. Take the passage (~150–400 words). Write 1–2 rewrites from the voice card.
+2. `compare_passages([...])` with the original and rewrites in shuffled
+   order, no labels (a blind pick). Wait for the reply starting
+   `[prose-forge pick]`; don't choose for them.
+3. Apply their choice (or their edited text) to the draft.
+4. Append an entry to `voice-ledger.md` beside the profile (Drive doc or
+   project file): date, chapter, why, the chosen text, the rejected texts.
+   Mark the chosen text `author-edited` only if they edited it.
+
+Use the ledger:
+- **Before drafting:** after the voice card, read the last ~5 ledger entries
+  (chosen text + why). Their stated reasons outrank the voice card.
+- **Rebuilding the profile** (every ~10 entries, or when asked): rejected
+  passages are Claude's imitations, so add them to `controls`.
+  `author-edited` text counts as their prose, so add it to `samples`. A picked
+  but unedited Claude passage is neither; it's still Claude's prose.
+- If they pick "None of these", ask what's off, and note it in the ledger.
+
 Revising the author's own prose: steps 3–5 only, and propose before/after
 pairs instead of rewriting; it's their text.

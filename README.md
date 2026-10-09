@@ -116,6 +116,7 @@ measures. It stores nothing and calls no LLM, so it costs nothing to run.
 | `build_style_profile` | fingerprint 15k+ words of *your* prose, plus Claude's attempts at a few of your scenes ("controls") → a personal detector of Claude-imitating-you |
 | `check_draft` | AI-tell spans + a voice verdict ("reads like the author" / "drifting" / "imitation"), the habits causing it, and the passage to start with |
 | `check_continuity` | names in a draft vs canon: probable misspellings and first appearances |
+| `compare_passages` | an inline picker (MCP App): 2–4 versions side by side; the author picks or edits one, and the choice goes back to Claude for the voice ledger |
 
 **Claude Code:** `/plugin marketplace add joelhoward0/ff-editor-agent`, then
 `/plugin install prose-forge@prose-forge`. You get the MCP server, the

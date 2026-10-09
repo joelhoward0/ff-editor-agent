@@ -16,10 +16,8 @@ from typing import Any
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT / "src"))
 
-try:
-    from mcp.server.mcpserver import MCPServer as FastMCP
-except ImportError:
-    from mcp.server.fastmcp import FastMCP
+from mcp.server.apps import Apps  # noqa: E402
+from mcp.server.mcpserver import MCPServer as FastMCP  # noqa: E402
 
 from prose_forge import banlist, continuity, stats, voice  # noqa: E402
 from prose_forge.lint import lint_text  # noqa: E402
@@ -27,8 +25,42 @@ from prose_forge.lint import lint_text  # noqa: E402
 SEED = banlist.load_rules(ROOT / "seed_banlist.txt")
 MAX_CHARS = 400_000  # ~70k words; bounds CPU per request
 
+COMPARE_UI = "ui://prose-forge/compare.html"
+apps = Apps()
+apps.add_html_resource(
+    COMPARE_UI, (ROOT / "compare_app.html").read_text(encoding="utf-8"),
+    title="Pick a version", description="Side-by-side prose picker",
+)
+
+
+@apps.tool(resource_uri=COMPARE_UI)
+def compare_passages(
+    passages: list[str], labels: list[str] | None = None, context: str = ""
+) -> dict[str, Any]:
+    """Show the author 2-4 versions of the same passage side by side, inline,
+    to pick one or edit one. Use it to resolve a voice hotspot (the original
+    plus 1-2 rewrites) or any 'which sounds like me?' question. Shuffle the
+    order and leave labels empty so the pick is blind; labels are short notes
+    shown per version, for when the author asks to know which is which.
+    context: one line on what is being compared. The choice arrives as a user
+    message starting "[prose-forge pick]"; record it in the author's voice
+    ledger (see the write-in-my-voice skill). Wait for it; don't pick for them."""
+    if not 2 <= len(passages) <= 4:
+        raise ValueError("pass 2 to 4 passages")
+    _guard(**{f"passage_{i}": p for i, p in enumerate(passages)})
+    listing = "\n\n".join(
+        f"{chr(65 + i)}: {p}" for i, p in enumerate(passages)
+    )
+    return {
+        "passages": passages, "labels": labels or [], "context": context,
+        "if_no_picker": "Show these to the author as A/B/... and ask which reads "
+        "most like them, or to edit one:\n\n" + listing,
+    }
+
+
 mcp = FastMCP(
     "prose-forge",
+    extensions=[apps],
     instructions=(
         "Style and continuity checks for fiction drafted in Claude. Workflow: "
         "build_style_profile once from the author's own prose (plus, ideally, "
@@ -38,7 +70,9 @@ mcp = FastMCP(
         "call check_draft with the profile; fix the flagged spans, then work the "
         "voice drift as habits (never by sprinkling words to hit numbers), "
         "starting at the hotspot; check again. Call check_continuity against "
-        "prior chapters before handing a chapter back."
+        "prior chapters before handing a chapter back. To learn the author's taste, "
+        "show 2-4 versions of a passage with compare_passages; their pick comes "
+        "back as a chat message starting [prose-forge pick]."
     ),
 )
 

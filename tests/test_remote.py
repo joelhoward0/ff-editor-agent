@@ -43,7 +43,13 @@ def test_remote_tools_end_to_end():
         async with streamable_http_client(url) as (r, w), ClientSession(r, w) as s:
             await s.initialize()
             names = {t.name for t in (await s.list_tools()).tools}
-            assert names == {"build_style_profile", "check_draft", "check_continuity"}
+            assert names == {
+                "build_style_profile", "check_draft", "check_continuity", "compare_passages"
+            }
+            tools = {t.name: t for t in (await s.list_tools()).tools}
+            uri = tools["compare_passages"].meta["ui"]["resourceUri"]
+            ui = (await s.read_resource(uri)).contents[0]
+            assert ui.mime_type == "text/html;profile=mcp-app" and "ui/message" in ui.text
 
             async def call(tool, **args):
                 res = await s.call_tool(tool, args)
@@ -60,5 +66,7 @@ def test_remote_tools_end_to_end():
             assert long["voice"]["verdict"] == "reads like an imitation"
             cont = await call("check_continuity", draft=SLOP, canon="She saw Marisol.")
             assert cont["near_misses"] == [{"draft": "Marisole", "canon": "Marisol"}]
+            pick = await s.call_tool("compare_passages", {"passages": ["one", "two"]})
+            assert pick.structured_content["passages"] == ["one", "two"]
 
     anyio.run(run)

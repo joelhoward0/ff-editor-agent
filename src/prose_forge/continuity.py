@@ -32,12 +32,16 @@ def names(text: str, confirmed: set[str] | frozenset = frozenset()) -> set[str]:
 
 def check(draft: str, canon: str, cutoff: float = 0.8) -> dict[str, list]:
     """``{near_misses: [{draft, canon}], new_names: [...]}`` for draft vs canon."""
+    draft, canon = draft.replace("’", "'"), canon.replace("’", "'")
+    # a word ever written lowercase is a common word, not a name ("Hi", "Band")
+    common = set(re.findall(r"\b[a-z][a-z'-]+\b", draft + "\n" + canon))
     confirmed = names(canon) | names(draft)
-    canon_names = names(canon, confirmed)
-    near, new = [], []
+    canon_names = {n for n in names(canon, confirmed) if n.lower() not in common}
     solid = names(draft, confirmed)
+    near, new = [], []
     # sentence-initial words can't be trusted as new names, but can still be typos
-    for name in sorted(names(draft, _cap_words(draft)) - canon_names):
+    candidates = {n for n in names(draft, _cap_words(draft)) if n.lower() not in common}
+    for name in sorted(candidates - canon_names):
         match = difflib.get_close_matches(name, canon_names, n=1, cutoff=cutoff)
         if match:
             near.append({"draft": name, "canon": match[0]})
