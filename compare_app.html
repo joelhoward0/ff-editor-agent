@@ -10,7 +10,7 @@
     :root { --bg: #1c1b19; --fg: #ece8e1; --muted: #a39d93; --line: #3a3733; --card: #252321; --accent: #e0a46a; --picked: #3a2c1f; }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  body { margin: 0; min-height: 120px; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
   h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
   .context { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
   .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
@@ -88,7 +88,7 @@ function render(args) {
 async function send(text) {
   const status = document.getElementById("status");
   try {
-    await request("ui/message", { role: "user", content: { type: "text", text } });
+    await request("ui/message", { role: "user", content: [{ type: "text", text }] });
     sent = true; status.textContent = "Sent to Claude.";
   } catch (err) {
     try { await navigator.clipboard.writeText(text); status.textContent = "Couldn't send directly; copied to your clipboard. Paste it into the chat."; }
@@ -114,15 +114,35 @@ document.getElementById("none").addEventListener("click", () => {
   send(`[prose-forge pick] None of these sound like me.${why ? "\nWhy: " + why : ""}`);
 });
 
-new ResizeObserver(() => notify("ui/notifications/size-changed", {
-  width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight,
-})).observe(document.documentElement);
+// Same measurement as the official App SDK: content height via max-content.
+let lastW = 0, lastH = 0, scheduled = false;
+function sendSize() {
+  if (scheduled) return; scheduled = true;
+  requestAnimationFrame(() => {
+    scheduled = false;
+    const html = document.documentElement, prev = html.style.height;
+    html.style.height = "max-content";
+    const h = Math.ceil(html.getBoundingClientRect().height); html.style.height = prev;
+    const w = Math.ceil(window.innerWidth);
+    if (w !== lastW || h !== lastH) { lastW = w; lastH = h; notify("ui/notifications/size-changed", { width: w, height: h }); }
+  });
+}
 
+// Handshake first; the host ignores or hides an app until it completes.
+// appInfo is required by the host's schema (it rejects the request without it).
 request("ui/initialize", {
   protocolVersion: "2026-01-26",
-  clientInfo: { name: "prose-forge-compare", version: "1.0.0" },
+  appInfo: { name: "prose-forge-compare", version: "1.1.0" },
   appCapabilities: { availableDisplayModes: ["inline"] },
-}).then(() => notify("ui/notifications/initialized", {}));
+}).then(() => {
+  notify("ui/notifications/initialized", {});
+  sendSize();
+  new ResizeObserver(sendSize).observe(document.documentElement);
+}, (err) => {
+  document.getElementById("status").textContent =
+    "Couldn't connect to Claude (" + (err && err.message || "handshake failed") + "). Tell Claude your pick in the chat.";
+  console.error("prose-forge: ui/initialize failed", err);
+});
 </script>
 </body>
 </html>

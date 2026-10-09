@@ -50,9 +50,13 @@ def test_remote_tools_end_to_end():
                 "build_style_profile", "check_draft", "check_continuity", "compare_passages"
             }
             tools = {t.name: t for t in (await s.list_tools()).tools}
-            uri = tools["compare_passages"].meta["ui"]["resourceUri"]
+            meta = tools["compare_passages"].meta
+            uri = meta["ui"]["resourceUri"]
+            assert meta["ui/resourceUri"] == uri  # legacy key, as registerAppTool writes
             ui = (await s.read_resource(uri)).contents[0]
             assert ui.mime_type == "text/html;profile=mcp-app" and "ui/message" in ui.text
+            assert ui.meta["ui"]["prefersBorder"] is True
+            assert "appInfo:" in ui.text  # host rejects ui/initialize without it
 
             async def call(tool, **args):
                 res = await s.call_tool(tool, args)

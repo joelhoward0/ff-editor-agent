@@ -31,11 +31,13 @@ COMPARE_UI = "ui://prose-forge/compare.html"
 apps = Apps()
 apps.add_html_resource(
     COMPARE_UI, (ROOT / "compare_app.html").read_text(encoding="utf-8"),
-    title="Pick a version", description="Side-by-side prose picker",
+    title="Pick a version", description="Side-by-side prose picker", prefers_border=True,
 )
 
 
-@apps.tool(resource_uri=COMPARE_UI)
+# The legacy flat key too, as the reference server helper (registerAppTool) does
+# for hosts built against the earlier draft.
+@apps.tool(resource_uri=COMPARE_UI, meta={"ui/resourceUri": COMPARE_UI})
 def compare_passages(
     passages: list[str], labels: list[str] | None = None, context: str = ""
 ) -> dict[str, Any]:

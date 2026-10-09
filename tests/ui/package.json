@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild host.ts --bundle --format=iife --outfile=host.js --log-level=warning",
+    "test": "npm run build && node run.mjs"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "esbuild": "^0.25.0",
+    "playwright": "1.56.1"
+  }
+}
