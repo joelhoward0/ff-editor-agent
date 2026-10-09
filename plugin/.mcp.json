@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "prose-forge": {"type": "http", "url": "https://prose-forge-tau.vercel.app/mcp"}
+  }
+}

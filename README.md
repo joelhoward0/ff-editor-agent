@@ -105,6 +105,30 @@ is how the test suite and CI work: `FORGE_MOCK=1 uv run pytest`.
 Exit codes: `0` ok · `1` hard-gate failure · `2` missing config/asset (the
 message names the command to run first).
 
+## Use it inside Claude (hosted, no setup)
+
+The deterministic half of prose-forge runs as a public, stateless MCP server:
+`https://prose-forge-tau.vercel.app/mcp`. Claude drafts and edits; the server
+measures. It stores nothing and calls no LLM, so it costs nothing to run.
+
+| tool | what |
+|---|---|
+| `build_style_profile` | fingerprint 3k+ words of *your* prose → profile JSON + positive drafting guidance |
+| `check_draft` | AI-tell spans (with their sentence) + style drift vs your profile; `clean` verdict |
+| `check_continuity` | names in a draft vs canon: probable misspellings and first appearances |
+
+**Claude Code:** `/plugin marketplace add joelhoward0/ff-editor-agent`, then
+`/plugin install prose-forge@prose-forge`. You get the MCP server, the
+`write-in-my-voice` skill, and a hook: in any project with a
+`style-profile.json` at its root, every `.md`/`.txt` Claude writes is checked
+and the findings go straight back to Claude to fix (optional `banlist.txt`
+beside it adds your own phrases).
+
+**claude.ai / desktop:** add the URL above as a custom connector, and upload
+`plugin/skills/write-in-my-voice` as a skill. With Google Drive connected, the
+skill builds your profile from your manuscript docs, saves it to Drive, and
+reads earlier chapters for continuity.
+
 ## Driving it over MCP
 
 The repo ships a project-scoped `.mcp.json`, so Claude Code auto-detects the

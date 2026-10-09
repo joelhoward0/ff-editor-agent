@@ -14,3 +14,8 @@ found (himself|herself|themselves)
 somehow
 a testament to
 re:\bpalpable\b
+re:(?i)\b(something|a knot|a weight|warmth) (tightened|twisted|loosened|settled|shifted|stirred|fluttered|clenched|bloomed|unfurled) (in|inside|behind) (his|her|their|my) (chest|stomach|gut|throat|ribs)
+re:\b[Ii]t (wasn'?t|was not) [^.!?]{1,40}\. [Ii]t was\b
+re:\bOnce\. Twice\.
+re:\b(a|like a) held breath\b
+re:\b(said|whispered|murmured) (softly|quietly|gently)\b

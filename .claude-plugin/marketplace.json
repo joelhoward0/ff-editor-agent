@@ -1,0 +1,11 @@
+{
+  "name": "prose-forge",
+  "owner": {"name": "Joel Howard"},
+  "plugins": [
+    {
+      "name": "prose-forge",
+      "source": "./plugin",
+      "description": "Fiction drafts in your voice: style profile from your own prose, automatic AI-tell and style-drift checks, name continuity across chapters."
+    }
+  ]
+}

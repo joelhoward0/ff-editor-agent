@@ -41,7 +41,7 @@ def test_full_mock_sequence(workspace):
     assert (workspace / "data/banlist.txt").exists()
     # fixture sanity guarantees the mock control mines nothing
     assert banlist_summary["mined_added"] == 0
-    assert banlist_summary["total_active"] == 16  # the seed list
+    assert banlist_summary["total_active"] == 21  # the seed list
 
     # triples
     triples_summary = triples.build_triples(cfg, n=2)

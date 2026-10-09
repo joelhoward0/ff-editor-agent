@@ -51,7 +51,7 @@ class TestMatching:
 
     def test_seed_banlist_parses_and_matches(self):
         rules = banlist.load_rules(Path(__file__).resolve().parent.parent / "seed_banlist.txt")
-        assert len(rules) == 16
+        assert len(rules) == 21
         text = "It was a testament to habit that a beat passed before she moved."
         assert len(banlist.find_hits(text, rules)) == 2
 
