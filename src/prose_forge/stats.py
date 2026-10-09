@@ -13,9 +13,12 @@ from typing import Any
 
 import numpy as np
 
-_SENT_BOUNDARY = re.compile(r'(?<=[.!?…])["\'”’)\]]*[ \t]+|[ \t]*\n[ \t]*\n[ \t\n]*')
+# Any line break ends a paragraph (and so a sentence): Google Docs exports and
+# most manuscripts use one newline per paragraph, not blank lines. Hard-wrapped
+# prose would over-split; manuscripts essentially never hard-wrap.
+_SENT_BOUNDARY = re.compile(r'(?<=[.!?…])["\'”’)\]]*[ \t]+|[ \t]*\n[ \t\n]*')
 _WORD = re.compile(r"[\w'’-]+")
-_PARA_SPLIT = re.compile(r"\n[ \t]*\n[ \t\n]*")
+_PARA_SPLIT = re.compile(r"[ \t]*\n[ \t\n]*")
 _MARKER_ONLY = re.compile(r"^[\s*_\-#~=]*$")
 _ADVERB_TAG = re.compile(r"\b(said|asked|replied|whispered|muttered)\s+\w+ly\b", re.IGNORECASE)
 _DQUOTE = re.compile(r'"([^"\n]*)"|“([^”\n]*)”')

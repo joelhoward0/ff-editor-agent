@@ -97,3 +97,10 @@ def test_compute_baseline_pools_across_texts():
     assert baseline["sent_len_mean"] == pytest.approx(2.0)
     assert baseline["sent_len_std"] == pytest.approx(math.sqrt(2 / 3))
     assert baseline["word_count"] == 6
+
+
+def test_single_newline_paragraphs_and_sentences():
+    # Google Docs exports: one newline between paragraphs, no blank lines
+    text = "He ran.\nShe followed him down the hill\nand out."
+    assert len(stats.split_paragraphs(text)) == 3
+    assert stats.sentence_word_counts(text) == [2, 6, 2]

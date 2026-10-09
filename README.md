@@ -113,8 +113,8 @@ measures. It stores nothing and calls no LLM, so it costs nothing to run.
 
 | tool | what |
 |---|---|
-| `build_style_profile` | fingerprint 3k+ words of *your* prose → profile JSON + positive drafting guidance |
-| `check_draft` | AI-tell spans (with their sentence) + style drift vs your profile; `clean` verdict |
+| `build_style_profile` | fingerprint 15k+ words of *your* prose, plus Claude's attempts at a few of your scenes ("controls") → a personal detector of Claude-imitating-you |
+| `check_draft` | AI-tell spans + a voice verdict ("reads like the author" / "drifting" / "imitation"), the habits causing it, and the passage to start with |
 | `check_continuity` | names in a draft vs canon: probable misspellings and first appearances |
 
 **Claude Code:** `/plugin marketplace add joelhoward0/ff-editor-agent`, then
@@ -128,6 +128,11 @@ beside it adds your own phrases).
 `plugin/skills/write-in-my-voice` as a skill. With Google Drive connected, the
 skill builds your profile from your manuscript docs, saves it to Drive, and
 reads earlier chapters for continuity.
+
+See [EVAL.md](EVAL.md) for how this was tested on a real author's serial: what
+works (your own prose and a voice card in context before drafting; a personal
+detector as the gate) and what doesn't (generic AI-tell lists; editing toward
+numbers).
 
 ## Driving it over MCP
 

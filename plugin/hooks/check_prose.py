@@ -32,6 +32,16 @@ def report(result: dict) -> str:
              "keeping everything else verbatim:"]
     lines += [f'- "{s["text"]}" in: {s["sentence"]}' for s in result["spans"]]
     lines += [f"- {w['message']}" for w in result["warnings"]]
+    v = result.get("voice")
+    if v and "verdict" in v:
+        lines.append(f"Voice: {v['verdict']} (score {v['score']}). Fix these as habits, "
+                     "re-reading voice-card.md, never by inserting/deleting words:")
+        lines += [f"- {d['feature']}: {d['direction']} ({d['draft']} vs {d['you']})"
+                  for d in v.get("drift", [])]
+        if "hotspot" in v:
+            lines.append(f"Start at the passage beginning: {v['hotspot']['starts'][:100]!r}")
+        lines.append("Re-check at most once; if the voice verdict is unchanged, stop and "
+                     "tell the author where it still drifts.")
     return "\n".join(lines)
 
 
