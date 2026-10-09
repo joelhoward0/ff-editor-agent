@@ -18,6 +18,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from mcp.server.apps import Apps  # noqa: E402
 from mcp.server.mcpserver import MCPServer as FastMCP  # noqa: E402
+from starlette.responses import PlainTextResponse  # noqa: E402
+from starlette.routing import Route  # noqa: E402
 
 from prose_forge import banlist, continuity, stats, voice  # noqa: E402
 from prose_forge.lint import lint_text  # noqa: E402
@@ -195,3 +197,9 @@ def check_continuity(draft: str, canon: str) -> dict[str, Any]:
 
 
 app = mcp.streamable_http_app(stateless_http=True, json_response=True, host="0.0.0.0")
+# Stateless: no server-initiated stream, so GET gets a prompt 405 (allowed by
+# the spec) instead of an idle SSE stream that stalled connector setup checks.
+app.router.routes.insert(0, Route(
+    "/mcp", lambda _req: PlainTextResponse("POST only", 405, headers={"Allow": "POST"}),
+    methods=["GET"],
+))

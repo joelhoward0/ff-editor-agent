@@ -38,6 +38,9 @@ def _serve() -> str:
 
 def test_remote_tools_end_to_end():
     url = _serve()
+    import httpx
+
+    assert httpx.get(url, timeout=5).status_code == 405  # never an idle stream
 
     async def run():
         async with streamable_http_client(url) as (r, w), ClientSession(r, w) as s:
