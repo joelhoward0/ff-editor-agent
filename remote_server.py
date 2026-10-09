@@ -8,6 +8,7 @@ file) and pass back in, so the server never holds anyone's prose.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -27,10 +28,13 @@ from prose_forge.lint import lint_text  # noqa: E402
 SEED = banlist.load_rules(ROOT / "seed_banlist.txt")
 MAX_CHARS = 400_000  # ~70k words; bounds CPU per request
 
-COMPARE_UI = "ui://prose-forge/compare.html"
+COMPARE_HTML = (ROOT / "compare_app.html").read_text(encoding="utf-8")
+# Content-hashed URI: hosts may cache UI resources by URI, so every change to
+# the page gets a new address and no host keeps serving a stale picker.
+COMPARE_UI = f"ui://prose-forge/compare-{hashlib.sha256(COMPARE_HTML.encode()).hexdigest()[:12]}.html"
 apps = Apps()
 apps.add_html_resource(
-    COMPARE_UI, (ROOT / "compare_app.html").read_text(encoding="utf-8"),
+    COMPARE_UI, COMPARE_HTML,
     title="Pick a version", description="Side-by-side prose picker", prefers_border=True,
 )
 
