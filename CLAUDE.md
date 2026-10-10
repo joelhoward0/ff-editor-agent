@@ -7,8 +7,23 @@ server). `mcp_server.py` and `src/` are the older local pipeline.
 
 ## Shipping changes
 
-Never push straight to `main`. Every change goes on a branch and a PR that
-Joel merges.
+Never push straight to `main`. Every change goes on a branch and a PR.
+
+Who merges depends on risk. Claude may merge its own PR once the checks
+below pass and CI is green, when the change is moderate risk or lower:
+
+- **Low:** docs, comments, skill wording, test-only changes, version bumps.
+- **Moderate:** a contained feature or fix covered by tests (including the UI
+  tests for picker/triage changes), where existing tool calls keep working:
+  additive tool parameters, new skill scripts, UI changes to one app.
+
+Leave the PR for Joel to merge, and say why, when it's higher risk:
+anything that breaks or renames an existing tool, parameter or pick/triage
+message format; changes to `check_draft` scoring, the voice detector or
+`build_style_profile` that would change verdicts on existing profiles;
+deploy, auth, CORS or security settings; data handling (anything that would
+store or log user prose); dependency upgrades; deleting files or features.
+When unsure, treat it as higher.
 
 - **Plugin changes** (anything under `plugin/`): bump `version` in
   `plugin/.claude-plugin/plugin.json` in the same PR. The plugin is installed
