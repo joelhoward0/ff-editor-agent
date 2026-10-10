@@ -18,13 +18,23 @@ Everything goes in one folder, `prose-forge`, so the author owns it and can
 open, edit or delete any of it: `voice-card.md`, `style-profile.json`,
 `voice-ledger.md`, `samples.md`, `controls.md`, optional `banlist.txt`.
 
-- **claude.ai / desktop:** a `prose-forge` folder in their Google Drive, via
-  the Google Drive connector (find the folder by name; create it if missing).
-  The connector can't rewrite a file, so to change one: create the new
-  version in the folder with its full contents (`disableConversionToGoogleType:
-  true`, `text/markdown` or `application/json`), then trash the old one. If
-  two copies ever exist, the newest wins. No Drive connector: ask them to turn
-  it on, or to attach the files and keep what you hand back.
+- **claude.ai / desktop:** a `prose-forge` folder in their Google Drive (find
+  it by title with the Drive connector; create it if missing). The `.md`
+  files are **Google Docs** titled without the extension (`voice-card`,
+  `voice-ledger`, `samples`, `controls`, `banlist`), so the author can read
+  and edit them like any doc:
+  - Create one with Drive `create_file` from markdown text (it converts to a
+    Doc). Read it with Drive `read_file_content`.
+  - Change it **in place** with the Google Docs connector (`update_doc`; follow
+    the google-workspace skill: read for the revision first, append at the
+    body end index − 1). Never recreate a Doc to change it: the link must stay.
+  - `style-profile.json` stays a plain file (`disableConversionToGoogleType:
+    true`, `application/json`); a Doc would mangle the JSON. It changes only on
+    a rebuild: create the new one, then trash the old. If two exist, the
+    newest wins.
+  - No Docs connector: ask them to turn it on. Until then, change a Doc by
+    creating a new one and trashing the old, and say the link changed. No Drive
+    connector: ask them to turn it on, or to attach the files.
 - **Claude Code:** the project root (where `style-profile.json` also switches
   on the automatic check hook).
 
@@ -138,9 +148,10 @@ would actually write. When `check_draft` returns a hotspot, or the author asks
 4. Add an entry per spot to `voice-ledger.md` in the `prose-forge` folder,
    right away, before more drafting: date, chapter, why, the chosen text, the
    rejected texts. Mark the chosen text `author-edited` only if they edited
-   it, and any version that was the author's own prose `author-written`. A
-   pick message saying "Changed my mind" replaces the previous entries for
-   that picker; don't add a second set.
+   it, and any version that was the author's own prose `author-written`.
+   Always append; never delete or rewrite entries. A pick message saying
+   "Changed my mind" gets new entries marked `replaces the entries above for
+   <context>`; replaced entries count for nothing.
 
 Use the ledger:
 - **Before drafting:** after the voice card, read the last ~5 ledger entries
@@ -150,7 +161,8 @@ Use the ledger:
   `build_style_profile` with `samples` = `samples.md` + every `author-edited`
   chosen text whose edits were substantial (not a word or two), and
   `controls` = `controls.md` + every rejected text not marked
-  `author-written` (Claude's imitations the author turned down). Join each
+  `author-written` (Claude's imitations the author turned down). Skip
+  replaced entries. Join each
   side with blank lines between texts; picks are short and only count pooled. A picked but
   unedited Claude passage goes in neither. Save the new profile over
   `style-profile.json`, append `Profile rebuilt from N entries (date)` to the
