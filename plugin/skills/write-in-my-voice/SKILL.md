@@ -185,27 +185,31 @@ the best evidence there is: Claude's version next to theirs. Learn it without
 being asked.
 
 - **At handoff** (Every draft, step 6): copy the draft doc with Drive
-  `copy_file` into the `prose-forge` folder, titled `snapshot: <doc title>`
-  (a server-side copy; no prose passes through chat). Append to the ledger
-  `### <date> · <chapter> · handed back`, with the doc's ID and the
-  snapshot's ID.
+  `copy_file` into a `snapshots` folder inside `prose-forge` (create it if
+  missing), titled `snapshot: <doc title>`. It's a server-side copy; no prose
+  passes through chat. Append to the ledger `### <date> · <chapter> · handed
+  back`, with the doc's ID and the snapshot's ID.
 - **Learn** at the start of every draft or revision session, before reading
   the ledger, and whenever the author says "learn from my edits": for each
-  `handed back` line with no later `edits` entry for that doc, or whose doc
-  has changed since its last `edits` entry, get the doc's metadata. Skip it if
-  it's unchanged since the snapshot, or was modified in the last 24 hours
-  (they may still be editing). Otherwise download both as `text/plain` (a big
-  download is saved to a file; use that path) and run
+  `handed back` line with no later `edits` entry, get the doc's metadata.
+  Skip it if it's unchanged since the snapshot, or was modified in the last
+  24 hours (they may still be editing). Otherwise download both as
+  `text/plain` (a big download is saved to a file; use that path) and run
   `python <this skill's folder>/scripts/edits.py SNAPSHOT DOC OUT.json`.
-- Append one entry: `### <date> · <chapter> · edits` with `Doc modified:
-  <modifiedTime>`, a `Why (inferred):` line naming the 2–3 patterns their
-  edits show (Claude's reading, so it never outranks a reason the author
-  stated), then `Chosen (author-edited):` the `author` text of every `edit`
-  spot and `Chosen (author-written):` every `added` spot, and `Rejected:` the
-  `claude` text of every `edit` and `cut` spot, joined with ` / ` as in pick
-  entries. A re-learn of the same doc is marked `replaces the entries above
-  for <doc>`. No spots: append the entry with `no substantive edits`.
+- Append one entry: `### <date> · <chapter> · edits`, a `Why (inferred):`
+  line naming the 2–3 patterns their edits show (Claude's reading, so it
+  never outranks a reason the author stated), then `Chosen (author-edited):`
+  the `author` text of every `edit` spot and `Chosen (author-written):` every
+  `added` spot, and `Rejected:` the `claude` text of every `edit` and `cut`
+  spot, joined with ` / ` as in pick entries. No spots: append the entry with
+  `no substantive edits`. Then trash the snapshot: each draft is learned once.
 - Tell the author in one line ("Learned from your edits to Ch39: 14
   rewrites, 3 cuts").
+- **Backfill** (a draft from before snapshots, or "learn from my edits to
+  <chapter>"): the Claude side is the version Claude handed back, as its own
+  doc or a copy the author makes from Docs version history; the author side
+  is their finished chapter. If either sits inside a longer manuscript, cut
+  out just that chapter first (`chunk.py split`, or the text between its
+  heading and the next). Then run `edits.py` and log the entry as above.
 - No code execution: read both docs and compare them by hand only if they're
   short; otherwise say it waits for a session that can run the script.
