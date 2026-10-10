@@ -14,7 +14,6 @@ dependencies = [
     "scikit-learn>=1.5",
     "numpy>=1.26",
     "mcp>=1.2",
-    "cryptography>=42",
 ]
 
 [dependency-groups]

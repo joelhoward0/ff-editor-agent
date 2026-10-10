@@ -12,25 +12,21 @@ to; Claude follows them into polished literary prose the author doesn't
 write. Fixing numbers afterwards barely helps. So: load the real voice first,
 draft, then use the prose-forge tools as a gate.
 
-## Signed-in connection (prose-forge has `load_voice`)
+## Where the voice files live
 
-If the prose-forge tools include `load_voice`, the author signed in with
-Google: their voice card, style profile and voice ledger live in a
-`prose-forge` folder in their own Drive, managed by the tools. Then:
+Everything goes in one folder, `prose-forge`, so the author owns it and can
+open, edit or delete any of it: `voice-card.md`, `style-profile.json`,
+`voice-ledger.md`, `samples.md`, `controls.md`, optional `banlist.txt`.
 
-- Start every draft or revision with `load_voice`; it returns the voice card
-  and their recent picks, and retrains the profile when enough picks accrue.
-- `check_draft` uses the saved profile; don't pass one.
-- `build_style_profile` saves profile, samples and controls to their Drive.
-- A `[prose-forge pick]` message ending "(Saved to your voice ledger.)" is
-  already recorded. If it ends "(Pick id: …)" instead, call `record_pick`
-  yourself with that `pick_id` and the versions as shown.
-- First time, if `load_voice` has no voice card or profile but the author has
-  them elsewhere (e.g. "Voice Card" and style-profile.json in Drive), read them
-  and import with `save_voice_file`. A profile built before signing in has no
-  samples saved, so retraining needs one `build_style_profile` run.
-- The file steps below (voice-card.md, style-profile.json, voice-ledger.md)
-  are for the open connection only.
+- **claude.ai / desktop:** a `prose-forge` folder in their Google Drive, via
+  the Google Drive connector (find the folder by name; create it if missing).
+  The connector can't rewrite a file, so to change one: create the new
+  version in the folder with its full contents (`disableConversionToGoogleType:
+  true`, `text/markdown` or `application/json`), then trash the old one. If
+  two copies ever exist, the newest wins. No Drive connector: ask them to turn
+  it on, or to attach the files and keep what you hand back.
+- **Claude Code:** the project root (where `style-profile.json` also switches
+  on the automatic check hook).
 
 ## One-time setup (no style-profile.json yet)
 
@@ -51,11 +47,9 @@ Google: their voice card, style profile and voice ledger live in a
    3 control chapters) and the 3 control drafts. Save `profile` as
    `style-profile.json`. Show the author `imitation_tells`; discard the
    control drafts.
-5. Optional: phrases they personally hate, one per line, in `banlist.txt`.
-
-Save everything beside the manuscript: a Drive folder (claude.ai) or the
-project root (Claude Code, where `style-profile.json` also switches on the
-automatic check hook).
+5. Save the step-4 samples text as `samples.md` and the control drafts as
+   `controls.md`: retraining needs them (a profile alone can't be rebuilt).
+6. Optional: phrases they personally hate, one per line, in `banlist.txt`.
 
 ## Every draft
 
@@ -86,7 +80,7 @@ they haven't read), call `triage_scenes` with the chapter split at its own
 scene breaks. Wait for the `[prose-forge triage]` reply (an "Updated" one
 replaces the earlier). Then work it in order: `FIX STORY` scenes first (their
 note says what should happen; quoted lines show where), then `CUT`, then
-`FIX VOICE` with the drafting loop below, using `compare_passages` on their
+`FIX VOICE` with the drafting loop above, using `compare_passages` on their
 quoted lines. Leave `KEEP` scenes untouched. Unmarked scenes: ask, don't guess.
 If they prefer to annotate in Google Docs instead, read the doc with comments
 included and treat comments starting `story:`, `voice:`, `cut:` or `keep:` the
@@ -103,17 +97,26 @@ would actually write. When `check_draft` returns a hotspot, or the author asks
    order, no labels (a blind pick). Wait for the reply starting
    `[prose-forge pick]`; don't choose for them.
 3. Apply their choice (or their edited text) to the draft.
-4. Append an entry to `voice-ledger.md` beside the profile (Drive doc or
-   project file): date, chapter, why, the chosen text, the rejected texts.
-   Mark the chosen text `author-edited` only if they edited it.
+4. Add an entry to `voice-ledger.md` in the `prose-forge` folder, right
+   away, before more drafting: date, chapter, why, the chosen text, the
+   rejected texts. Mark the chosen text `author-edited` only if they edited
+   it, and any version that was the author's own prose `author-written`. A
+   pick message saying "Changed my mind" replaces the previous entry for that
+   comparison; don't add a second one.
 
 Use the ledger:
 - **Before drafting:** after the voice card, read the last ~5 ledger entries
   (chosen text + why). Their stated reasons outrank the voice card.
-- **Rebuilding the profile** (every ~10 entries, or when asked): rejected
-  passages are Claude's imitations, so add them to `controls`.
-  `author-edited` text counts as their prose, so add it to `samples`. A picked
-  but unedited Claude passage is neither; it's still Claude's prose.
+- **Rebuilding the profile:** when 10 entries have accrued since the last
+  `Profile rebuilt` line in the ledger (or when asked), call
+  `build_style_profile` with `samples` = `samples.md` + every `author-edited`
+  chosen text whose edits were substantial (not a word or two), and
+  `controls` = `controls.md` + every rejected text not marked
+  `author-written` (Claude's imitations the author turned down). Join each
+  side with blank lines between texts; picks are short and only count pooled. A picked but
+  unedited Claude passage goes in neither. Save the new profile over
+  `style-profile.json`, append `Profile rebuilt from N entries (date)` to the
+  ledger, and tell the author in one line.
 - If they pick "None of these", ask what's off, and note it in the ledger.
 
 Revising the author's own prose: steps 3–5 only, and propose before/after
