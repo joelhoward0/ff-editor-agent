@@ -28,12 +28,43 @@ open, edit or delete any of it: `voice-card.md`, `style-profile.json`,
 - **Claude Code:** the project root (where `style-profile.json` also switches
   on the automatic check hook).
 
+## Large files
+
+A manuscript doc can be too big to read at once (a Drive read comes back cut
+off, or a Docs `read_doc` result is saved to a file instead of shown), and a
+whole chapter is costly to paste into every tool call. Don't page through it
+in chat or retype it:
+
+1. **Get it on disk.** If a read was saved to a file, use that path; where
+   you can run code, a large Docs `read_doc` saves itself. Without code
+   execution, ask which chapters you need and read only those, or ask the
+   author to attach the doc.
+2. **Split it:** `python <this skill's folder>/scripts/chunk.py split SRC OUTDIR`
+   writes one file per chapter (cut at scene breaks past 6,000 words) and
+   `index.json` with each file's title, word count and first line. Choose
+   chunks from the index, not by reading everything.
+3. **Fan out to subagents** when the job means reading many chunks: telling
+   the author's chapters from a co-author's, beat summaries for controls,
+   gathering samples. Give each subagent file paths for one chunk or a few;
+   it writes results to files and returns only short findings (title, POV,
+   words, verdict, output path), never the chunk text. Keep blind work blind:
+   a controls subagent gets the beat summary only, never the chapter.
+4. **Feed tools from files.** Build `samples.md` and `controls.md` by joining
+   chunk files on disk, and let a subagent make the `build_style_profile`
+   call so the samples never pass through your context. For
+   `check_continuity`, pass `chunk.py names SRC OUT` extracts of the draft
+   and each canon source (every proper name with the sentence it first
+   appears in) instead of the full text. Each text a tool takes is capped at
+   400,000 characters; split anything larger.
+5. Never rebuild a file's contents from memory or from a cut-off read.
+
 ## One-time setup (no style-profile.json yet)
 
 1. **Collect samples:** 15,000–30,000 words the author wrote themselves, never
    AI drafts. Look in Google Drive first (their manuscript docs; ask which
    chapters are fully theirs, and in co-written work which POV/chapters are
-   theirs), else ask them to paste or attach.
+   theirs), else ask them to paste or attach. A manuscript too big to read at
+   once: see Large files.
 2. **Write the voice card.** Read 3 sample chapters and follow
    `voice-card-prompt.md` in this skill's folder. Save as `voice-card.md`.
    Show it to the author and fix anything they say is wrong.
@@ -70,7 +101,8 @@ open, edit or delete any of it: `voice-card.md`, `style-profile.json`,
    don't loop: hand back with the verdict and the hotspot so the author knows
    where to look.
 5. **Continuity:** `check_continuity(draft, canon)`. Fix `near_misses`; list
-   `new_names` for the author to confirm.
+   `new_names` for the author to confirm. Long canon: pass `chunk.py names`
+   extracts (see Large files).
 6. **Hand back** the chapter and one line: verdict, tells fixed, new names.
 
 ## Triage before revising
