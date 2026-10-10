@@ -80,6 +80,15 @@ def test_remote_tools_end_to_end():
             assert cont["near_misses"] == [{"draft": "Marisole", "canon": "Marisol"}]
             pick = await s.call_tool("compare_passages", {"passages": ["one", "two"]})
             assert pick.structured_content["passages"] == ["one", "two"]
+            multi = await s.call_tool("compare_passages", {"spots": [
+                {"context": "lamp line", "passages": ["a", "b"]},
+                {"context": "gap line", "passages": ["c", "d", "e"]},
+            ]})
+            sc = multi.structured_content
+            assert [x["context"] for x in sc["spots"]] == ["lamp line", "gap line"]
+            assert "Spot 2: gap line" in sc["if_no_picker"]
+            bad = await s.call_tool("compare_passages", {"spots": [{"passages": ["only one"]}]})
+            assert bad.is_error
             tri = await s.call_tool("triage_scenes", {"scenes": ["a b", "c d"]})
             assert tri.structured_content["scenes"] == ["a b", "c d"]
             assert "Scene 2" in tri.structured_content["if_no_view"]

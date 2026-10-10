@@ -42,13 +42,35 @@ if (ok.initialized) {
   await fr.getByRole('button', { name: 'Send changed pick' }).click();
   await p.waitForTimeout(500);
   const [first, second] = await messages();
-  ok.message = !!first && valid(first) && first.content[0].text.includes('I chose C');
+  ok.message = !!first && valid(first) && first.content[0].text.includes('Ch 38 hotspot: I chose C');
   ok.changedMind = !!second && valid(second) && /Changed my mind[\s\S]*I chose B \(with my edits\)/.test(second.content[0].text);
   await p.screenshot({ path: '/tmp/picker.png' });
 }
+
+// Several short spots in one picker: each picked on its own, sent once, and
+// the message names every spot so the pick can't be mistaken for another.
+const spotArgs = { context: 'Ch 38 scene 1', spots: [
+  { context: 'wine line', passages: ['a glass of Evan\'s wine', 'a very good year'] },
+  { context: 'pocket line', passages: ['warm against his ribs', 'body heat', 'a lump in his pocket'] },
+] };
+const p2 = await b.newPage({ viewport: { width: 840, height: 900 } });
+await p2.setContent('<!doctype html><body style="margin:0"></body>');
+await p2.addScriptTag({ content: bundle });
+await p2.evaluate(([h, a]) => window.runHost(h, a), [app, spotArgs]);
+await p2.waitForTimeout(1500);
+const fr2 = p2.frameLocator('iframe');
+await fr2.getByRole('button', { name: 'Pick A for spot 1' }).click();
+ok.waitsForAllSpots = await fr2.getByRole('button', { name: 'Send picks' }).isDisabled();
+await fr2.getByRole('button', { name: 'None of these for spot 2' }).click();
+await fr2.getByRole('button', { name: 'Send picks' }).click();
+await p2.waitForTimeout(500);
+const spotMsg = (await p2.evaluate(() => window.events)).filter((e) => e[0] === 'message').map((e) => e[1].content[0].text)[0] || '';
+ok.spots = spotMsg.startsWith('[prose-forge pick] Ch 38 scene 1\n1. wine line: I chose A over B.\n2. pocket line: None of these');
+await p2.screenshot({ path: '/tmp/picker-spots.png' });
 await b.close();
+console.log('SPOT MESSAGE', JSON.stringify(spotMsg));
 console.log('RESULT', JSON.stringify(ok), 'iframe height', height);
-if (!(ok.initialized && ok.sized && ok.selectDoesNotSend && ok.message && ok.changedMind)) {
+if (!(ok.initialized && ok.sized && ok.selectDoesNotSend && ok.message && ok.changedMind && ok.waitsForAllSpots && ok.spots)) {
   console.log('HOST CONSOLE', JSON.stringify(consoleLines));
   process.exit(1);
 }

@@ -49,27 +49,52 @@ TRIAGE_UI = _ui("triage", "Triage a chapter", "Scene-by-scene keep/fix/cut notes
 # for hosts built against the earlier draft.
 @apps.tool(resource_uri=COMPARE_UI, meta={"ui/resourceUri": COMPARE_UI})
 def compare_passages(
-    passages: list[str], labels: list[str] | None = None, context: str = ""
+    passages: list[str] | None = None,
+    labels: list[str] | None = None,
+    context: str = "",
+    spots: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Show the author 2-4 versions of the same passage side by side, inline,
-    to pick one or edit one. Use it to resolve a voice hotspot (the original
-    plus 1-2 rewrites) or any 'which sounds like me?' question. Shuffle the
-    order and leave labels empty so the pick is blind; labels are short notes
-    shown per version, for when the author asks to know which is which.
-    context: one line on what is being compared. The choice arrives as a user
-    message starting "[prose-forge pick]"; record it in the author's voice
-    ledger (see the write-in-my-voice skill). Wait for it; don't pick for them."""
-    if not 2 <= len(passages) <= 4:
-        raise ValueError("pass 2 to 4 passages")
-    _guard(**{f"passage_{i}": p for i, p in enumerate(passages)})
+    """Show the author 2-4 versions of a passage side by side, inline, to pick
+    one or edit one: the original plus 1-2 rewrites of a voice hotspot, or any
+    'which sounds like me?' question. Keep each passage short (one sentence to
+    one paragraph: the line in question plus just enough around it to read),
+    since versions that differ in several places at once are hard to choose
+    between. For several spots, pass `spots` instead of `passages`: a list of
+    up to 12 {"context": "where/what this spot is", "passages": [2-4
+    versions]}, picked one by one in the same picker. Shuffle each spot's
+    versions and leave labels empty so the pick is blind. context: one line
+    naming what is being compared (chapter, scene). The choice arrives as one
+    user message starting "[prose-forge pick]" that repeats the context and
+    lists each spot's pick; record it in the author's voice ledger (see the
+    write-in-my-voice skill). Show one picker at a time and wait for it;
+    don't pick for them."""
+    if (passages is None) == (spots is None):
+        raise ValueError("pass either passages or spots")
+    if passages is not None:
+        spots = [{"context": "", "passages": passages, "labels": labels or []}]
+    if not 1 <= len(spots) <= 12:
+        raise ValueError("pass 1 to 12 spots")
+    clean = []
+    for n, spot in enumerate(spots, 1):
+        versions = [str(v) for v in spot.get("passages", [])]
+        if not 2 <= len(versions) <= 4:
+            raise ValueError(f"spot {n}: pass 2 to 4 passages")
+        _guard(**{f"spot_{n}_{i}": v for i, v in enumerate(versions)})
+        clean.append({"context": str(spot.get("context", "")), "passages": versions,
+                      "labels": list(spot.get("labels") or [])})
     listing = "\n\n".join(
-        f"{chr(65 + i)}: {p}" for i, p in enumerate(passages)
+        (f"Spot {n}: {s['context']}\n" if len(clean) > 1 else "")
+        + "\n\n".join(f"{chr(65 + i)}: {v}" for i, v in enumerate(s["passages"]))
+        for n, s in enumerate(clean, 1)
     )
-    return {
-        "passages": passages, "labels": labels or [], "context": context,
-        "if_no_picker": "Show these to the author as A/B/... and ask which reads "
-        "most like them, or to edit one:\n\n" + listing,
+    out: dict[str, Any] = {
+        "spots": clean, "context": context,
+        "if_no_picker": "Show these to the author and ask which version reads most like "
+        "them" + (" for each spot" if len(clean) > 1 else "") + ", or to edit one:\n\n" + listing,
     }
+    if passages is not None:  # single-spot shape, as before
+        out.update(passages=clean[0]["passages"], labels=clean[0]["labels"])
+    return out
 
 
 @apps.tool(resource_uri=TRIAGE_UI, meta={"ui/resourceUri": TRIAGE_UI})
@@ -114,7 +139,8 @@ mcp = FastMCP(
         "voice drift as habits (never by sprinkling words to hit numbers), "
         "starting at the hotspot; check again. Call check_continuity against "
         "prior chapters before handing a chapter back. To learn the author's taste, "
-        "show 2-4 versions of a passage with compare_passages; their pick comes "
+        "show 2-4 versions of short passages with compare_passages (several spots "
+        "can share one picker); show one picker at a time, and their picks come "
         "back as a chat message starting [prose-forge pick]. To have the author mark "
         "up a draft scene by scene, use triage_scenes; their notes come back "
         "starting [prose-forge triage]."

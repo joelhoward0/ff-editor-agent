@@ -124,17 +124,23 @@ The detector says *that* a passage drifts; only the author can say what they
 would actually write. When `check_draft` returns a hotspot, or the author asks
 "which sounds like me?":
 
-1. Take the passage (~150–400 words). Write 1–2 rewrites from the voice card.
-2. `compare_passages([...])` with the original and rewrites in shuffled
-   order, no labels (a blind pick). Wait for the reply starting
-   `[prose-forge pick]`; don't choose for them.
-3. Apply their choice (or their edited text) to the draft.
-4. Add an entry to `voice-ledger.md` in the `prose-forge` folder, right
-   away, before more drafting: date, chapter, why, the chosen text, the
+1. Pick the spots: the lines that drift, each kept short (one sentence to one
+   paragraph, the line plus just enough around it to read). Versions that
+   differ in several places at once are hard to choose between. Write 1–2
+   rewrites per spot from the voice card.
+2. `compare_passages`: one spot as `passages` (original plus rewrites), or up
+   to 12 as `spots=[{"context": "scene 3, Matt's coat", "passages": [...]}]`,
+   each with a context line saying where it is. Shuffle each spot's versions,
+   no labels (a blind pick). Show one picker at a time and wait for its reply
+   starting `[prose-forge pick]` (it repeats the context and gives one line
+   per spot) before showing another; don't choose for them.
+3. Apply each choice (or their edited text) to the draft.
+4. Add an entry per spot to `voice-ledger.md` in the `prose-forge` folder,
+   right away, before more drafting: date, chapter, why, the chosen text, the
    rejected texts. Mark the chosen text `author-edited` only if they edited
    it, and any version that was the author's own prose `author-written`. A
-   pick message saying "Changed my mind" replaces the previous entry for that
-   comparison; don't add a second one.
+   pick message saying "Changed my mind" replaces the previous entries for
+   that picker; don't add a second set.
 
 Use the ledger:
 - **Before drafting:** after the voice card, read the last ~5 ledger entries
@@ -149,7 +155,8 @@ Use the ledger:
   unedited Claude passage goes in neither. Save the new profile over
   `style-profile.json`, append `Profile rebuilt from N entries (date)` to the
   ledger, and tell the author in one line.
-- If they pick "None of these", ask what's off, and note it in the ledger.
+- If they pick "None of these" (for a spot or the whole picker), ask what's
+  off, and note it in the ledger.
 
 Revising the author's own prose: steps 3–5 only, and propose before/after
 pairs instead of rewriting; it's their text.

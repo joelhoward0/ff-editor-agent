@@ -10,15 +10,18 @@
     :root { --bg: #1c1b19; --fg: #ece8e1; --muted: #a39d93; --line: #3a3733; --card: #252321; --accent: #e0a46a; --picked: #3a2c1f; }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 120px; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  body { margin: 0; min-height: 4.8em; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
   h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
   .context { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  h2 { font-size: 14px; font-weight: 600; margin: 18px 0 8px; }
+  .spot-none { margin-top: 8px; }
+  .spot-none.picked { background: var(--accent); color: var(--bg); }
   .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
   .card.picked { border-color: var(--accent); background: var(--picked); }
   .head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--muted); }
   .head b { color: var(--fg); font-size: 14px; }
-  textarea { width: 100%; min-height: 220px; resize: vertical; border: 1px solid transparent; border-radius: 6px; padding: 6px; background: transparent; color: inherit;
+  textarea { width: 100%; min-height: 4.8em; resize: vertical; border: 1px solid transparent; border-radius: 6px; padding: 6px; background: transparent; color: inherit;
              font: 16px/1.6 Georgia, "Iowan Old Style", serif; field-sizing: content; }
   textarea:hover, textarea:focus { border-color: var(--line); outline: none; }
   textarea:focus-visible { outline: 2px solid var(--accent); }
@@ -37,7 +40,7 @@
 <body>
 <h1 id="title">Which reads most like you?</h1>
 <p class="context" id="context">Pick one (edit it first if you like), then Send. You can change your pick after sending.</p>
-<div class="grid" id="grid" aria-live="polite"></div>
+<div id="spots" aria-live="polite"></div>
 <div class="foot">
   <input id="why" placeholder="Why? (optional: e.g. 'B sounds like James, A is too tidy')" aria-label="Why you picked it">
   <button id="none" type="button">None of these</button>
@@ -47,8 +50,9 @@
 <script>
 const HOST = "*"; // host origin is not known in advance; the host sandboxes us
 let nextId = 1; const pending = new Map();
-let passages = []; let originals = [];
-let selected = null; // card index, "none", or null
+// One spot per short passage: { context, labels, passages, originals, selected }.
+// selected is a version index, "none", or null.
+let spots = []; let heading = "";
 let lastSent = null; // text of the last message delivered to Claude
 
 function request(method, params) {
@@ -65,46 +69,91 @@ window.addEventListener("message", (e) => {
     const p = pending.get(m.id); pending.delete(m.id); m.error ? p.rej(m.error) : p.res(m.result); return;
   }
   if (m.method === "ui/notifications/tool-input") render(m.params.arguments || {});
-  if (m.method === "ui/notifications/tool-result" && !passages.length) render(m.params.structuredContent || {});
+  if (m.method === "ui/notifications/tool-result" && !spots.length) render(m.params.structuredContent || {});
   if (m.method === "ui/resource-teardown") window.parent.postMessage({ jsonrpc: "2.0", id: m.id, result: {} }, HOST);
 });
 
+const letter = (i) => String.fromCharCode(65 + i);
+const multi = () => spots.length > 1;
+
 function render(args) {
-  if (!Array.isArray(args.passages) || !args.passages.length) return;
-  passages = args.passages.map(String); originals = passages.slice();
-  const labels = args.labels || [];
-  if (args.context) document.getElementById("context").textContent = args.context;
-  const grid = document.getElementById("grid"); grid.innerHTML = "";
-  passages.forEach((text, i) => {
-    const label = String.fromCharCode(65 + i);
-    const card = document.createElement("section"); card.className = "card"; card.dataset.i = i;
-    card.innerHTML = `<div class="head"><b>${label}</b><span class="note"></span></div>
-      <textarea aria-label="Version ${label}"></textarea><button type="button">Pick ${label}</button>`;
-    card.querySelector(".note").textContent = labels[i] || "";
-    const ta = card.querySelector("textarea"); ta.value = text;
-    ta.addEventListener("input", () => {
-      passages[i] = ta.value;
-      card.querySelector(".note").textContent = ta.value === originals[i] ? (labels[i] || "") : "edited";
-      card.querySelector(".note").classList.toggle("edited", ta.value !== originals[i]);
-      refresh();
-    });
-    card.querySelector("button").addEventListener("click", () => select(i));
-    grid.appendChild(card);
+  const raw = Array.isArray(args.spots) && args.spots.length ? args.spots
+    : Array.isArray(args.passages) && args.passages.length ? [{ passages: args.passages, labels: args.labels }]
+    : null;
+  if (!raw) return;
+  heading = String(args.context || "");
+  spots = raw.map((s) => {
+    const passages = (s.passages || []).map(String);
+    return { context: String(s.context || ""), labels: s.labels || [], passages, originals: passages.slice(), selected: null };
   });
+  if (heading) document.getElementById("context").textContent = heading;
+  if (multi()) document.getElementById("title").textContent = "Pick the version that reads most like you, spot by spot";
+  const root = document.getElementById("spots"); root.innerHTML = "";
+  spots.forEach((spot, si) => {
+    const sec = document.createElement("section"); sec.className = "spot";
+    if (multi()) {
+      const h = document.createElement("h2"); h.textContent = `${si + 1}. ${spot.context || "Spot " + (si + 1)}`;
+      sec.appendChild(h);
+    }
+    const grid = document.createElement("div"); grid.className = "grid"; sec.appendChild(grid);
+    spot.passages.forEach((text, i) => {
+      const card = document.createElement("div"); card.className = "card"; card.dataset.s = si; card.dataset.i = i;
+      card.innerHTML = `<div class="head"><b>${letter(i)}</b><span class="note"></span></div>
+        <textarea></textarea><button type="button">Pick ${letter(i)}</button>`;
+      const where = multi() ? ` for spot ${si + 1}` : "";
+      card.querySelector("textarea").setAttribute("aria-label", `Version ${letter(i)}${where}`);
+      if (multi()) card.querySelector("button").setAttribute("aria-label", `Pick ${letter(i)}${where}`);
+      const note = card.querySelector(".note"); note.textContent = spot.labels[i] || "";
+      const ta = card.querySelector("textarea"); ta.value = text;
+      ta.addEventListener("input", () => {
+        spot.passages[i] = ta.value;
+        const edited = ta.value !== spot.originals[i];
+        note.textContent = edited ? "edited" : (spot.labels[i] || ""); note.classList.toggle("edited", edited);
+        refresh();
+      });
+      card.querySelector("button").addEventListener("click", () => select(si, i));
+      grid.appendChild(card);
+    });
+    if (multi()) {
+      const none = document.createElement("button"); none.type = "button"; none.className = "spot-none";
+      none.textContent = "None of these"; none.setAttribute("aria-label", `None of these for spot ${si + 1}`);
+      none.addEventListener("click", () => select(si, "none")); sec.appendChild(none);
+    }
+    root.appendChild(sec);
+  });
+  document.getElementById("none").hidden = multi();
+  refresh();
 }
 
+function verdict(spot) {
+  if (spot.selected === "none") return { line: "None of these sound like me." };
+  const i = spot.selected, edited = spot.passages[i] !== spot.originals[i];
+  const others = spot.passages.map((_, j) => letter(j)).filter((_, j) => j !== i);
+  return {
+    line: `I chose ${letter(i)}${edited ? " (with my edits)" : ""} over ${others.join(", ") || "nothing"}.`,
+    edit: edited ? spot.passages[i] : null,
+  };
+}
+
+// The message always says what was compared, so a pick can't be matched to
+// the wrong picker when several have been shown.
 function compose() {
-  if (selected === null) return null;
+  if (!spots.length || spots.some((s) => s.selected === null)) return null;
   const why = document.getElementById("why").value.trim();
   let msg;
-  if (selected === "none") {
-    msg = "None of these sound like me.";
+  if (!multi()) {
+    const v = verdict(spots[0]);
+    msg = (heading ? `${heading}: ` : "") + v.line;
+    if (v.edit) msg += `\nMy edited version:\n"""\n${v.edit}\n"""`;
   } else {
-    const i = selected, label = String.fromCharCode(65 + i);
-    const edited = passages[i] !== originals[i];
-    const rejected = passages.map((_, j) => String.fromCharCode(65 + j)).filter((_, j) => j !== i);
-    msg = `I chose ${label}${edited ? " (with my edits)" : ""} over ${rejected.join(", ") || "nothing"}.`;
-    if (edited) msg += `\nMy edited version:\n"""\n${passages[i]}\n"""`;
+    const lines = heading ? [heading] : [];
+    const edits = [];
+    spots.forEach((s, si) => {
+      const v = verdict(s);
+      lines.push(`${si + 1}. ${s.context || "Spot " + (si + 1)}: ${v.line}`);
+      if (v.edit) edits.push(`My edited version of ${si + 1}:\n"""\n${v.edit}\n"""`);
+    });
+    msg = lines.concat(edits).join("\n");
   }
   if (why) msg += `\nWhy: ${why}`;
   return msg;
@@ -113,15 +162,25 @@ function compose() {
 // Selecting never sends; Send does. After a send you can still change your
 // mind: the next send is marked as replacing the previous pick.
 function refresh() {
-  document.querySelectorAll(".card").forEach((c) => c.classList.toggle("picked", +c.dataset.i === selected));
-  document.getElementById("none").classList.toggle("picked", selected === "none");
+  document.querySelectorAll(".card").forEach((c) =>
+    c.classList.toggle("picked", spots[+c.dataset.s].selected === +c.dataset.i));
+  document.querySelectorAll(".spot-none").forEach((b, si) => b.classList.toggle("picked", spots[si].selected === "none"));
+  document.getElementById("none").classList.toggle("picked", !multi() && spots.length > 0 && spots[0].selected === "none");
   const btn = document.getElementById("send");
   const msg = compose();
   btn.disabled = msg === null || msg === lastSent;
-  btn.textContent = lastSent === null ? "Send pick" : "Send changed pick";
+  btn.textContent = lastSent === null ? (multi() ? "Send picks" : "Send pick")
+    : (multi() ? "Send changed picks" : "Send changed pick");
+  if (multi() && lastSent === null) {
+    const done = spots.filter((s) => s.selected !== null).length;
+    document.getElementById("status").textContent = `${done} of ${spots.length} picked`;
+  }
 }
 
-function select(choice) { selected = selected === choice ? null : choice; refresh(); }
+function select(si, choice) {
+  const spot = spots[si]; if (!spot) return;
+  spot.selected = spot.selected === choice ? null : choice; refresh();
+}
 
 async function send() {
   const body = compose(); if (body === null) return;
@@ -139,7 +198,7 @@ async function send() {
   refresh();
 }
 
-document.getElementById("none").addEventListener("click", () => select("none"));
+document.getElementById("none").addEventListener("click", () => select(0, "none"));
 document.getElementById("send").addEventListener("click", send);
 document.getElementById("why").addEventListener("input", refresh);
 
@@ -161,7 +220,7 @@ function sendSize() {
 // appInfo is required by the host's schema (it rejects the request without it).
 request("ui/initialize", {
   protocolVersion: "2026-01-26",
-  appInfo: { name: "prose-forge-compare", version: "1.1.0" },
+  appInfo: { name: "prose-forge-compare", version: "1.2.0" },
   appCapabilities: { availableDisplayModes: ["inline"] },
 }).then(() => {
   notify("ui/notifications/initialized", {});
