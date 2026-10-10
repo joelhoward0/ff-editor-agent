@@ -23,7 +23,8 @@ Google: their voice card, style profile and voice ledger live in a
 - `check_draft` uses the saved profile; don't pass one.
 - `build_style_profile` saves profile, samples and controls to their Drive.
 - A `[prose-forge pick]` message ending "(Saved to your voice ledger.)" is
-  already recorded. Without that line, call `record_pick` yourself.
+  already recorded. If it ends "(Pick id: …)" instead, call `record_pick`
+  yourself with that `pick_id` and the versions as shown.
 - First time, if `load_voice` has no voice card or profile but the author has
   them elsewhere (e.g. "Voice Card" and style-profile.json in Drive), read them
   and import with `save_voice_file`. A profile built before signing in has no

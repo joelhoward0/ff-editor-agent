@@ -47,21 +47,25 @@ HTTP_TRANSPORT: httpx.AsyncBaseTransport | None = None  # tests swap in a fake G
 INSTRUCTIONS = (
     "Style and continuity checks for fiction drafted in Claude. Workflow: "
     "build_style_profile once from the author's own prose (plus, ideally, "
-    "Claude's own attempts at a few of their scenes as controls). Before drafting, "
-    "load a voice card and a recent sample of the author's own prose: that matters "
-    "more than any rule. After drafting, call check_draft; fix the flagged spans, "
-    "then work the voice drift as habits (never by sprinkling words to hit numbers), "
-    "starting at the hotspot; check again. Call check_continuity against prior "
-    "chapters before handing a chapter back. To learn the author's taste, show 2-4 "
-    "versions of a passage with compare_passages; their pick comes back as a chat "
-    "message starting [prose-forge pick]. To have the author mark up a draft scene "
-    "by scene, use triage_scenes; their notes come back starting [prose-forge triage]."
+    "Claude's own attempts at a few of their scenes as controls) and keep the "
+    "JSON. Before drafting, load a voice card and a recent sample of the "
+    "author's own prose: that matters more than any rule. After drafting, "
+    "call check_draft with the profile; fix the flagged spans, then work the "
+    "voice drift as habits (never by sprinkling words to hit numbers), "
+    "starting at the hotspot; check again. Call check_continuity against "
+    "prior chapters before handing a chapter back. To learn the author's taste, "
+    "show 2-4 versions of a passage with compare_passages; their pick comes "
+    "back as a chat message starting [prose-forge pick]. To have the author mark "
+    "up a draft scene by scene, use triage_scenes; their notes come back "
+    "starting [prose-forge triage]."
 )
 SIGNED_IN_NOTE = (
-    " This connection is signed in: the author's voice card, style profile and voice "
-    "ledger live in a prose-forge folder in their own Google Drive. Call load_voice "
-    "before drafting. check_draft uses the saved profile automatically. Picks the "
-    "picker reports as saved are already in the ledger; do not record them again."
+    " This connection is signed in, which overrides the above: the author's voice "
+    "card, style profile and voice ledger live in a prose-forge folder in their own "
+    "Google Drive. Call load_voice before drafting; check_draft uses the saved "
+    "profile, so there's no JSON to keep or pass. A pick message ending "
+    "'(Saved to your voice ledger.)' is already recorded; otherwise call record_pick "
+    "with the pick id the message gives."
 )
 
 
@@ -180,9 +184,11 @@ async def _maybe_rebuild(v: vault.Vault, entries: list[dict[str, Any]]) -> str |
     if not samples:
         return ("Ledger has new picks, but the original writing samples aren't saved in "
                 "Drive yet; run build_style_profile once to enable automatic retraining.")
-    extra_samples = [e["chosen_text"] for e in entries if e.get("edited") and e["chosen_text"]]
+    # Pooled: picks are short, and each text under half a window would add nothing.
+    extra_samples = [e["chosen_text"] for e in entries if e.get("edited") and e.get("chosen_text")]
     extra_controls = [r for e in entries if e.get("claude_written", True) for r in e["rejected"]]
-    built = _profile([samples, *extra_samples], [controls or "", *extra_controls])
+    built = _profile([samples, "\n\n".join(extra_samples)],
+                     [controls or "", "\n\n".join(extra_controls)])
     if "error" in built:
         return f"Retraining skipped: {built['error']}"
     await v.write("style-profile", json.dumps(
@@ -192,7 +198,10 @@ async def _maybe_rebuild(v: vault.Vault, entries: list[dict[str, Any]]) -> str |
 
 # -- server factory --
 
-def build_server(signed_in: bool, auth: dict[str, Any] | None = None) -> FastMCP:
+def build_server(provider: signin.GoogleProvider | None = None,
+                 settings: AuthSettings | None = None) -> FastMCP:
+    """The tool set; with a sign-in provider, the Drive-backed variant."""
+    signed_in = provider is not None
     apps = Apps()
 
     def ui(name: str, title: str, description: str) -> str:
@@ -216,7 +225,8 @@ def build_server(signed_in: bool, auth: dict[str, Any] | None = None) -> FastMCP
         order and leave labels empty so the pick is blind; labels are short notes
         shown per version, for when the author asks to know which is which.
         context: one line on what is being compared. The choice arrives as a user
-        message starting "[prose-forge pick]". Wait for it; don't pick for them."""
+        message starting "[prose-forge pick]"; record it in the author's voice
+        ledger (see the write-in-my-voice skill). Wait for it; don't pick for them."""
         if not 2 <= len(passages) <= 4:
             raise ValueError("pass 2 to 4 passages")
         _guard(**{f"passage_{i}": p for i, p in enumerate(passages)})
@@ -254,11 +264,9 @@ def build_server(signed_in: bool, auth: dict[str, Any] | None = None) -> FastMCP
             "Keep / Fix story / Fix voice / Cut, with notes:\n" + listing,
         }
 
-    kwargs: dict[str, Any] = {}
-    if auth:
-        kwargs = {"auth_server_provider": auth["provider"], "auth": auth["settings"]}
+    auth = {"auth_server_provider": provider, "auth": settings} if signed_in else {}
     mcp = FastMCP("prose-forge", extensions=[apps],
-                  instructions=INSTRUCTIONS + (SIGNED_IN_NOTE if signed_in else ""), **kwargs)
+                  instructions=INSTRUCTIONS + (SIGNED_IN_NOTE if signed_in else ""), **auth)
 
     @mcp.tool()
     def check_continuity(draft: str, canon: str) -> dict[str, Any]:
@@ -343,8 +351,8 @@ def build_server(signed_in: bool, auth: dict[str, Any] | None = None) -> FastMCP
             has_profile = await v.read("style-profile") is not None
             entries = vault.parse_ledger(await v.read("ledger"))
             retrained = await _maybe_rebuild(v, entries) if has_profile else None
-        recent = [{"when_context": e["heading"], "why": e["why"],
-                   "chose": e["chosen_text"] or "(none of the versions)"}
+        recent = [{"when": e.get("when"), "context": e.get("context"), "why": e.get("why"),
+                   "chose": e.get("chosen_text") or "(none of the versions)"}
                   for e in entries[-RECENT_PICKS:]]
         out: dict[str, Any] = {"voice_card": card, "has_profile": has_profile,
                                "picks_total": len(entries), "recent_picks": recent}
@@ -362,31 +370,38 @@ def build_server(signed_in: bool, auth: dict[str, Any] | None = None) -> FastMCP
         (the JSON from build_style_profile) to their prose-forge Drive folder,
         replacing the previous one. Use it to import files they already have."""
         _guard(content=content)
-        if kind == "style-profile":
-            prof = json.loads(content)
-            if "voice" not in prof or "baseline" not in prof:
-                raise ValueError("not a prose-forge style profile (needs 'voice' and 'baseline')")
-            content = json.dumps(prof, indent=1)
         async with _vault() as v:
+            if kind == "style-profile":
+                prof = json.loads(content)
+                if "voice" not in prof or "baseline" not in prof:
+                    raise ValueError("not a prose-forge style profile (needs voice and baseline)")
+                # count existing picks as already learned from, so it isn't retrained at once
+                prof["ledger_entries"] = len(vault.parse_ledger(await v.read("ledger")))
+                content = json.dumps(prof, indent=1)
             await v.write(kind, content)
         return {"saved": vault.NAMES[kind]}
 
     @mcp.tool(meta={"ui": {"visibility": ["model", "app"]}})
     async def record_pick(
-        pick_id: str, passages: list[str], chosen: int | None, chosen_text: str | None = None,
-        why: str = "", context: str = "", claude_written: bool = True,
+        passages: list[str], chosen: int | None, chosen_text: str | None = None,
+        why: str = "", context: str = "", claude_written: bool = True, pick_id: str = "",
     ) -> dict[str, Any]:
         """Record a picker choice in the author's voice ledger in Drive. The
-        picker calls this itself; call it only if a [prose-forge pick] message
-        says it wasn't saved. chosen: index into passages, or null for "none of
-        these". chosen_text: the final text if the author edited it.
-        claude_written: false if the passages are the author's own prose.
-        Re-sending the same pick_id replaces that entry (a changed pick)."""
+        picker calls this itself; call it only when a [prose-forge pick] message
+        lacks "(Saved to your voice ledger.)", passing the pick id it gives.
+        passages: the versions as shown, in order. chosen: index into passages,
+        or null for "none of these". chosen_text: the final text if the author
+        edited it. claude_written: false if the passages are the author's own
+        prose. Re-sending the same pick_id replaces that entry (a changed pick)."""
         if not 1 <= len(passages) <= 4 or (chosen is not None and not 0 <= chosen < len(passages)):
             raise ValueError("1-4 passages and a valid chosen index (or null)")
+        if chosen_text is not None and not chosen_text.strip():
+            raise ValueError("chosen_text is empty")
         _guard(why=why, **{f"passage_{i}": p for i, p in enumerate(passages)},
                chosen_text=chosen_text or "")
         final = None if chosen is None else (chosen_text or passages[chosen])
+        # Without an id, the same versions + context always map to one entry.
+        pick_id = pick_id or hashlib.sha256(json.dumps([passages, context]).encode()).hexdigest()
         entry = {"id": pick_id[:64], "passages": passages, "chosen": chosen,
                  "chosen_text": final, "edited": chosen is not None and final != passages[chosen],
                  "why": why, "context": context[:200], "claude_written": claude_written}
@@ -406,7 +421,7 @@ def _get405(path: str) -> Route:
 
 def build_app():
     opts = {"stateless_http": True, "json_response": True, "host": "0.0.0.0"}
-    open_app = build_server(False).streamable_http_app(**opts)
+    open_app = build_server().streamable_http_app(**opts)
     open_app.router.routes.insert(0, _get405("/mcp"))
     if not signin.configured():
         return open_app
@@ -421,7 +436,7 @@ def build_app():
         issuer_url=PUBLIC_URL, resource_server_url=PUBLIC_URL + "/drive/mcp",
         client_registration_options=ClientRegistrationOptions(enabled=True),
     )
-    drive_mcp = build_server(True, {"provider": provider, "settings": settings})
+    drive_mcp = build_server(provider, settings)
     drive_mcp.custom_route(signin.CALLBACK_PATH, methods=["GET"])(provider.google_callback)
     drive_app = drive_mcp.streamable_http_app(streamable_http_path="/drive/mcp", **opts)
     # One app: the drive app's auth middleware only reads bearer tokens, so the

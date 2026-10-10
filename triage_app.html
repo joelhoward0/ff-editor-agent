@@ -72,6 +72,7 @@ function request(method, params) {
 function notify(method, params = {}) { window.parent.postMessage({ jsonrpc: "2.0", method, params }, HOST); }
 
 window.addEventListener("message", (e) => {
+  if (e.source !== window.parent) return; // only Claude's host frame may talk to us
   const m = e.data; if (!m || m.jsonrpc !== "2.0") return;
   if (m.id != null && !m.method && pending.has(m.id)) {
     const p = pending.get(m.id); pending.delete(m.id); m.error ? p.rej(m.error) : p.res(m.result); return;

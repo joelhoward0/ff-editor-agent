@@ -52,7 +52,8 @@ let selected = null; // card index, "none", or null
 let lastSent = null; // text of the last message delivered to Claude
 let pickContext = "";
 // One id per picker: a changed pick re-saves under it and replaces the entry.
-const pickId = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
+const pickId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+let sending = false;
 
 function request(method, params) {
   const id = nextId++;
@@ -62,6 +63,7 @@ function request(method, params) {
 function notify(method, params = {}) { window.parent.postMessage({ jsonrpc: "2.0", method, params }, HOST); }
 
 window.addEventListener("message", (e) => {
+  if (e.source !== window.parent) return; // only Claude's host frame may talk to us
   const m = e.data; if (!m || m.jsonrpc !== "2.0") return;
   if (m.id != null && !m.method && pending.has(m.id)) {
     const p = pending.get(m.id); pending.delete(m.id); m.error ? p.rej(m.error) : p.res(m.result); return;
@@ -120,7 +122,7 @@ function refresh() {
   document.getElementById("none").classList.toggle("picked", selected === "none");
   const btn = document.getElementById("send");
   const msg = compose();
-  btn.disabled = msg === null || msg === lastSent;
+  btn.disabled = sending || msg === null || msg === lastSent;
   btn.textContent = lastSent === null ? "Send pick" : "Send changed pick";
 }
 
@@ -136,17 +138,18 @@ async function saveToLedger() {
     why: document.getElementById("why").value.trim(), context: pickContext,
   } });
   const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000));
-  try { const r = await Promise.race([call, timeout]); return !(r && r.isError); }
+  try { const r = await Promise.race([call, timeout]); return r?.structuredContent?.saved === true; }
   catch { return false; }
 }
 
 async function send() {
-  const body = compose(); if (body === null) return;
+  const body = compose(); if (body === null || sending) return;
+  sending = true; refresh();
   const saved = await saveToLedger();
   const text = (lastSent === null
     ? `[prose-forge pick] ${body}`
     : `[prose-forge pick] Changed my mind; this replaces my previous pick. ${body}`)
-    + (saved ? "\n(Saved to your voice ledger.)" : "");
+    + (saved ? "\n(Saved to your voice ledger.)" : `\n(Pick id: ${pickId})`);
   const status = document.getElementById("status");
   try {
     await request("ui/message", { role: "user", content: [{ type: "text", text }] });
@@ -155,7 +158,7 @@ async function send() {
     try { await navigator.clipboard.writeText(text); status.textContent = "Couldn't send directly; copied to your clipboard. Paste it into the chat."; }
     catch { status.textContent = "Couldn't send. Tell Claude your pick in the chat."; }
   }
-  refresh();
+  sending = false; refresh();
 }
 
 document.getElementById("none").addEventListener("click", () => select("none"));

@@ -15,7 +15,7 @@ w.runHost = async (html: string, args: unknown, saving = false) => {
   if (saving) {  // stand-in for a signed-in server that has record_pick
     bridge.oncalltool = async (p) => {
       log("toolcall", p);
-      return { content: [{ type: "text", text: JSON.stringify({ saved: true }) }] };
+      return { content: [{ type: "text", text: '{"saved": true}' }], structuredContent: { saved: true } };
     };
   }
   (bridge as any).onerror = (e: unknown) => log("bridge-error", String(e));

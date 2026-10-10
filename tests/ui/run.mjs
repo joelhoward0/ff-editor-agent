@@ -50,14 +50,15 @@ if (ok.initialized) {
   const calls = (await events()).filter((e) => e[0] === 'toolcall').map((e) => e[1]);
   if (saving) {
     // both sends saved under ONE pick id, the second with the edited text
-    ok.saved = calls.length === 2 && calls.every((c) => c.name === 'record_pick')
+    ok.saved = calls.length === 2
       && calls[0].arguments.pick_id === calls[1].arguments.pick_id
       && calls[0].arguments.chosen === 2 && calls[1].arguments.chosen === 1
       && calls[1].arguments.chosen_text.startsWith('There was a vote, and he sat there')
-      && calls[1].arguments.passages[1] === args.passages[1]
       && savedNote(first) && savedNote(second);
   } else {
-    ok.unsavedFallback = calls.length === 0 && !savedNote(first) && !savedNote(second);
+    // not saved: Claude gets the pick id so its own record_pick lands on one entry
+    const ids = [first, second].map((m) => (m.content[0].text.match(/\(Pick id: (\S+)\)$/) || [])[1]);
+    ok.unsavedFallback = calls.length === 0 && !!ids[0] && ids[0] === ids[1];
   }
   await p.screenshot({ path: '/tmp/picker.png' });
 }

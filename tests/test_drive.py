@@ -34,7 +34,7 @@ class FakeGoogle:
     """Google OAuth + userinfo + the slice of Drive v3 the vault uses."""
 
     def __init__(self, email=EMAIL):
-        self.email, self.files, self.n = email, {}, 0
+        self.email, self.files, self.n, self.revoked = email, {}, 0, False
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         url, p = str(req.url), req.url.params
@@ -46,6 +46,8 @@ class FakeGoogle:
                     "access_token": "gacc", "refresh_token": "grefresh", "expires_in": 3600,
                     "scope": "openid email https://www.googleapis.com/auth/drive.file"})
             assert form["refresh_token"] == ["grefresh"]
+            if self.revoked:
+                return httpx.Response(400, json={"error": "invalid_grant"})
             return httpx.Response(200, json={"access_token": "gacc2", "expires_in": 3600})
         if url.startswith("https://openidconnect.googleapis.com/v1/userinfo"):
             return httpx.Response(200, json={"email": self.email, "email_verified": True})
@@ -60,12 +62,6 @@ class FakeGoogle:
             return httpx.Response(200, json={"files": hits[:1]})
         if req.method == "POST" and path == "/drive/v3/files":
             return httpx.Response(200, json={"id": self._new(json.loads(req.content), "")})
-        if req.method == "POST" and path == "/upload/drive/v3/files":
-            boundary = req.headers["Content-Type"].split("boundary=")[1]
-            parts = req.content.decode().split(f"--{boundary}")
-            meta = json.loads(parts[1].split("\r\n\r\n", 1)[1].strip())
-            content = parts[2].split("\r\n\r\n", 1)[1].removesuffix("\r\n")
-            return httpx.Response(200, json={"id": self._new(meta, content)})
         file_id = path.rsplit("/", 1)[1]
         if req.method == "GET" and p.get("alt") == "media":
             return httpx.Response(200, content=self.files[file_id]["content"].encode())
@@ -107,8 +103,8 @@ def server(monkeypatch):
     srv.should_exit = True
 
 
-def sign_in(base: str) -> str:
-    """Drive the OAuth flow the way Claude does; return our access token."""
+def sign_in(base: str) -> dict:
+    """Drive the OAuth flow the way Claude does; return the token response."""
     redirect = "http://localhost/callback"
     with httpx.Client(base_url=base) as c:
         reg = c.post("/register", json={"redirect_uris": [redirect], "client_name": "test",
@@ -147,12 +143,12 @@ def sign_in(base: str) -> str:
         ref = c.post("/token", data={"grant_type": "refresh_token", "client_id": client_id,
                                      "refresh_token": body["refresh_token"]})
         assert ref.status_code == 200 and ref.json()["access_token"]
-        return body["access_token"]
+        return {**body, "client_id": client_id}
 
 
 def test_signed_in_endpoint_end_to_end(server):
     base, google = server
-    token = sign_in(base)
+    token = sign_in(base)["access_token"]
 
     with httpx.Client(base_url=base) as c:
         # no token / tampered token -> 401 pointing at our resource metadata
@@ -193,6 +189,11 @@ def test_signed_in_endpoint_end_to_end(server):
             assert lint["voice"]["verdict"] != "reads like the author"
 
             passages = ["There was a vote.", "He voted, but she voted first."]
+            await call("record_pick", passages=passages, chosen=0)  # default id...
+            await call("record_pick", passages=passages, chosen=0)  # ...dedupes
+            assert google.text("voice-ledger.md").count("<!-- pick ") == 1
+            google.files = {k: f for k, f in google.files.items()
+                            if f["name"] != "voice-ledger.md"}
             await call("record_pick", pick_id="p1", passages=passages, chosen=0)
             await call("record_pick", pick_id="p1", passages=passages, chosen=1,
                        chosen_text="He voted, and she voted first.", why="and-chain")
@@ -215,11 +216,31 @@ def test_signed_in_endpoint_end_to_end(server):
     assert len(folder) == 1  # created once, reused
 
 
-def test_unlisted_google_account_is_refused(server, monkeypatch):
+def test_unlisted_google_account_is_refused(server):
     base, google = server
     google.email = "stranger@example.com"
     with pytest.raises(AssertionError, match="403|isn't allowed"):
         sign_in(base)
+
+
+def test_revoked_google_access_forces_sign_in_again(server):
+    base, google = server
+    tokens = sign_in(base)
+    remote_server.signin._access_cache.clear()
+    google.revoked = True
+    r = httpx.post(base + "/token", data={"grant_type": "refresh_token",
+                                          "client_id": tokens["client_id"],
+                                          "refresh_token": tokens["refresh_token"]})
+    assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
+
+
+def test_only_claude_may_register(server):
+    base, _ = server
+    for uri in ("https://evil.example/cb", "http://localhost.evil.com/cb"):
+        r = httpx.post(base + "/register", json={
+            "redirect_uris": [uri], "token_endpoint_auth_method": "none",
+            "grant_types": ["authorization_code"], "response_types": ["code"]})
+        assert r.status_code == 400 and r.json()["error"] == "invalid_redirect_uri"
 
 
 def test_open_only_when_google_not_configured(monkeypatch):

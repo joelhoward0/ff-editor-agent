@@ -14,9 +14,9 @@ Google client id and secret. Rotating that secret invalidates every session.
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import os
+import re
 import time
 from typing import Any
 
@@ -30,6 +30,7 @@ from mcp.server.auth.provider import (
     AuthorizationParams,
     AuthorizeError,
     RefreshToken,
+    RegistrationError,
     TokenError,
     construct_redirect_uri,
 )
@@ -46,9 +47,19 @@ GOOGLE_SCOPES = f"openid email {DRIVE_SCOPE}"
 CALLBACK_PATH = "/oauth/google/callback"
 
 STATE_TTL = 600          # Google round trip
-CODE_TTL = 300           # authorization code
+CODE_TTL = 120           # authorization code (stateless, so replayable until expiry; PKCE-bound)
 ACCESS_TTL = 3600        # our access token
-REFRESH_TTL = 90 * 86400  # our refresh token
+REFRESH_TTL = 30 * 86400  # our refresh token (sliding: each refresh issues a fresh one)
+
+# Only Claude may receive codes: its hosted callback, or Claude Code's loopback
+# redirect on any port. Without this, anyone could register their own redirect
+# and phish a signed-in user into granting them these tools.
+CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback"
+LOOPBACK = re.compile(r"^http://(localhost|127\.0\.0\.1)(:\d+)?/")
+
+
+def redirect_allowed(uri: str) -> bool:
+    return uri == CLAUDE_CALLBACK or bool(LOOPBACK.match(uri))
 
 
 def configured() -> bool:
@@ -89,6 +100,9 @@ class GoogleProvider:
     # -- clients (dynamic registration; the client_id IS the sealed record) --
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
+        if not client_info.redirect_uris or not all(
+                redirect_allowed(str(u)) for u in client_info.redirect_uris):
+            raise RegistrationError("invalid_redirect_uri", "only Claude may register")
         record = client_info.model_dump(mode="json", exclude={"client_id"}, exclude_none=True)
         client_info.client_id = self.sealer.seal("client", record)
 
@@ -155,7 +169,7 @@ class GoogleProvider:
     async def load_authorization_code(self, client: OAuthClientInformationFull,
                                       authorization_code: str) -> AuthorizationCode | None:
         d = self.sealer.unseal(authorization_code, "code", ttl=CODE_TTL)
-        if d is None or d["client_id"] != client.client_id:
+        if d is None:  # the SDK checks the code belongs to this client
             return None
         return AuthorizationCode(
             code=authorization_code, scopes=d["scopes"], expires_at=time.time() + CODE_TTL,
@@ -174,7 +188,7 @@ class GoogleProvider:
     async def load_refresh_token(self, client: OAuthClientInformationFull,
                                  refresh_token: str) -> RefreshToken | None:
         d = self.sealer.unseal(refresh_token, "refresh", ttl=REFRESH_TTL)
-        if d is None or d["client_id"] != client.client_id or d["email"] not in self.allowed:
+        if d is None or d["email"] not in self.allowed:  # SDK checks client and scopes
             return None
         return RefreshToken(token=refresh_token, client_id=d["client_id"], scopes=d["scopes"],
                             subject=d["email"])
@@ -184,10 +198,16 @@ class GoogleProvider:
         d = self.sealer.unseal(refresh_token.token, "refresh", ttl=REFRESH_TTL)
         if d is None:
             raise TokenError("invalid_grant", "refresh token expired")
-        if scopes and not set(scopes) <= set(d["scopes"]):
-            raise TokenError("invalid_scope", "cannot widen scopes on refresh")
-        return self._issue(client.client_id, scopes or d["scopes"], d["email"], d["g"],
-                           d["resource"])
+        # If Google revoked Drive access, fail the refresh so Claude asks to sign in
+        # again, rather than issuing tokens every Drive call would then reject.
+        async with httpx.AsyncClient(transport=self.transport, timeout=15) as http:
+            try:
+                await google_access_token(d["g"], http)
+            except PermissionError as exc:
+                raise TokenError("invalid_grant", "Google access was revoked") from exc
+            except RuntimeError:
+                pass  # Google briefly unavailable: don't log the user out for it
+        return self._issue(client.client_id, scopes, d["email"], d["g"], d["resource"])
 
     async def load_access_token(self, token: str) -> AccessToken | None:
         d = self.sealer.unseal(token, "access", ttl=ACCESS_TTL)
@@ -204,7 +224,7 @@ class GoogleProvider:
     def _issue(self, client_id: str, scopes: list[str], email: str, g: str,
                resource: str | None) -> OAuthToken:
         base = {"client_id": client_id, "scopes": scopes, "email": email, "g": g,
-                "resource": resource}
+                "resource": resource or self.resource_url}
         return OAuthToken(
             access_token=self.sealer.seal("access", {**base, "exp": int(time.time()) + ACCESS_TTL}),
             token_type="Bearer", expires_in=ACCESS_TTL,
@@ -219,8 +239,7 @@ _access_cache: dict[str, tuple[str, float]] = {}
 
 
 async def google_access_token(refresh_token: str, http: httpx.AsyncClient) -> str:
-    key = hashlib.sha256(refresh_token.encode()).hexdigest()
-    hit = _access_cache.get(key)
+    hit = _access_cache.get(refresh_token)
     if hit and hit[1] > time.time() + 60:
         return hit[0]
     r = await http.post(GOOGLE_TOKEN, data={
@@ -228,8 +247,11 @@ async def google_access_token(refresh_token: str, http: httpx.AsyncClient) -> st
         "client_secret": os.environ["GOOGLE_CLIENT_SECRET"],
         "grant_type": "refresh_token", "refresh_token": refresh_token,
     })
-    if r.status_code != 200:
+    if r.status_code == 400 and r.json().get("error") == "invalid_grant":
         raise PermissionError("Google access was revoked or expired; sign in to prose-forge again.")
+    if r.status_code != 200:
+        raise RuntimeError("Google is unavailable right now; try again shortly.")
     body = r.json()
-    _access_cache[key] = (body["access_token"], time.time() + body.get("expires_in", 3600))
+    expires = time.time() + body.get("expires_in", 3600)
+    _access_cache[refresh_token] = (body["access_token"], expires)
     return body["access_token"]
