@@ -135,6 +135,22 @@ works (your own prose and a voice card in context before drafting; a personal
 detector as the gate) and what doesn't (generic AI-tell lists; editing toward
 numbers).
 
+### Signed-in mode (your voice files in your own Drive)
+
+`/drive/mcp` adds "Sign in with Google": your voice card, style profile,
+writing samples and voice ledger live in a `prose-forge` folder in your Drive
+(the server can only see files it created there). The picker saves picks
+itself and the profile retrains every 10 picks. The server still stores
+nothing: the Google grant rides inside encrypted tokens Claude holds.
+Only Claude can register (redirects are limited to Claude's callback and
+loopback), and only `ALLOWED_EMAILS` can sign in. Tokens are stateless, so
+the way to cut off a session is to revoke prose-forge at
+myaccount.google.com/permissions (or remove the email from the allowlist).
+
+Enable it by setting `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
+`ALLOWED_EMAILS` on the deployment (Google OAuth client of type "Web
+application", redirect URI `<server>/oauth/google/callback`).
+
 ## Driving it over MCP
 
 The repo ships a project-scoped `.mcp.json`, so Claude Code auto-detects the

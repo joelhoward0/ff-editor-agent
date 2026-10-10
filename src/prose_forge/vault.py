@@ -140,7 +140,10 @@ def parse_ledger(md: str | None) -> list[dict[str, Any]]:
             e = json.loads(m.group(1))
         except ValueError:
             continue  # a hand-mangled entry is skipped, never fatal
-        if isinstance(e, dict) and isinstance(e.get("passages"), list) and e.get("id"):
+        ok = (isinstance(e, dict) and e.get("id") and isinstance(e.get("passages"), list)
+              and (e.get("chosen") is None
+                   or (type(e["chosen"]) is int and 0 <= e["chosen"] < len(e["passages"]))))
+        if ok:
             e["rejected"] = [p for i, p in enumerate(e["passages"]) if i != e.get("chosen")]
             out.append(e)
     return out

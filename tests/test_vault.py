@@ -32,3 +32,4 @@ def test_ledger_tolerates_hand_edits_and_crlf():
     md2 = upsert_entry(broken, pick("p2", 1))  # still writable; bad entry dropped
     assert [e["id"] for e in parse_ledger(md2)] == ["p2"]
     assert [e["id"] for e in parse_ledger(md2.replace("\n", "\r\n"))] == ["p2"]
+    assert parse_ledger(md2.replace('"chosen": 1', '"chosen": 9')) == []  # bad index skipped

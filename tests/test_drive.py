@@ -234,6 +234,13 @@ def test_revoked_google_access_forces_sign_in_again(server):
     assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
 
 
+def test_clients_minted_under_old_rules_are_rejected():
+    p = remote_server.signin.GoogleProvider("https://x", "https://x/drive/mcp", client_id="c",
+                                            client_secret="s", allowed_emails={EMAIL})
+    old = p.sealer.seal("client", {"redirect_uris": ["https://evil.example/cb"]})
+    assert anyio.run(p.get_client, old) is None
+
+
 def test_only_claude_may_register(server):
     base, _ = server
     for uri in ("https://evil.example/cb", "http://localhost.evil.com/cb"):

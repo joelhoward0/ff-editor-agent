@@ -108,7 +108,8 @@ class GoogleProvider:
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
         record = self.sealer.unseal(client_id, "client", ttl=None)
-        if record is None:
+        # re-check on every load, so no client minted under looser rules survives
+        if record is None or not all(redirect_allowed(u) for u in record.get("redirect_uris", [])):
             return None
         return OAuthClientInformationFull.model_validate({**record, "client_id": client_id})
 
@@ -205,7 +206,7 @@ class GoogleProvider:
                 await google_access_token(d["g"], http)
             except PermissionError as exc:
                 raise TokenError("invalid_grant", "Google access was revoked") from exc
-            except RuntimeError:
+            except (RuntimeError, httpx.HTTPError, ValueError):
                 pass  # Google briefly unavailable: don't log the user out for it
         return self._issue(client.client_id, scopes, d["email"], d["g"], d["resource"])
 
