@@ -24,7 +24,10 @@ import re
 import sys
 from pathlib import Path
 
-HEADING = re.compile(r"^(#{1,6})\s+(.+)$|^((?:chapter|part)\s+[\w.-]+.{0,70})$", re.I)
+# A markdown heading, "Chapter 3 …"/"Part 2 …", or a POV-name line like JAMIE (with
+# any Google Docs comment anchors such as [a][b] that a plain-text export leaves).
+HEADING = re.compile(r"^(#{1,6})\s+(.+)$|^((?:chapter|part)\s+[\w.-]+.{0,70})$"
+                     r"|^((?-i:[A-Z][A-Z ]{2,20}))(?:\[[a-z]{1,2}\])*$", re.I)
 SCENE_BREAK = re.compile(r"^\s*(?:[—–-]{1,3}|[*_]{3,}|⁂|#)\s*$")
 MD_ESCAPE = re.compile(r"\\([\\`*_{}\[\]()#+\-.!~|>])")
 SENTENCE = re.compile(r"[^.!?]+[.!?]+[\"”’')]*\s*|[^.!?]+$")
@@ -85,7 +88,7 @@ def split(text: str, max_words: int) -> list[tuple[str, str]]:
     sections: list[list[str]] = [["(front matter)"]]
     for line, m in zip(lines, matches, strict=True):
         if m and (len(m.group(1)) if m.group(1) else 1) == split_at:
-            sections.append([(m.group(2) or m.group(3)).strip()])
+            sections.append([(m.group(2) or m.group(3) or m.group(4)).strip()])
         sections[-1].append(line)
     out = []
     for title, *body in sections:

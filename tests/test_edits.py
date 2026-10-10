@@ -34,6 +34,12 @@ def test_diff_finds_rewrites_and_additions_and_ignores_trivia():
     assert out["summary"]["spots"] == 2 and out["summary"]["cut_words"] == 0
 
 
+def test_formatting_alone_is_not_an_edit():
+    md = "# **Ch 38**\n*Talk to him,* James says. That's it\\!\n"
+    plain = "﻿Ch 38\nTalk to him,[a] James says. That's it!\n"
+    assert edits.diff(md, plain)["spots"] == []
+
+
 def test_cut_paragraph():
     out = edits.diff(DRAFT, DRAFT.replace("Ryan comes in, and nobody looks up.\n", ""))
     assert [(s["kind"], s["author"]) for s in out["spots"]] == [("cut", "")]
@@ -47,3 +53,12 @@ def test_cli_reads_drive_downloads(tmp_path):
         return str(p)
     edits.main([dl("a.json", DRAFT), dl("b.json", EDITED), str(tmp_path / "out.json")])
     assert len(json.loads((tmp_path / "out.json").read_text())["spots"]) == 2
+
+
+def test_scene_shape():
+    draft = "One.\n—\nTwo opens here.\nMore.\n—\nThree.\n"
+    edited = "One.\n—\nThree.\nAnd a lot more words now.\n"
+    shape = edits.diff(draft, edited)["scenes"]
+    assert [(s["opens"], s["change"]) for s in shape] == [
+        ("One.", "same"), ("Two opens here.", "delete"), ("Three.", "same")]
+    assert shape[2]["edited_words"] > shape[2]["draft_words"]

@@ -29,8 +29,11 @@ MIN_WORDS_CHANGED = 3
 QUOTES = str.maketrans("“”‘’", "\"\"''")
 
 
+MARKUP = re.compile(r"^#+\s*|\*+|\\(?=[^\w\s])|\[[a-z]{1,2}\]|﻿")  # md, comment anchors, BOM
+
+
 def _norm(p: str) -> str:
-    return re.sub(r"\s+", " ", p.translate(QUOTES)).strip().lower()
+    return re.sub(r"\s+", " ", MARKUP.sub("", p.translate(QUOTES))).strip().lower()
 
 
 def _paras(text: str) -> list[str]:
@@ -63,8 +66,31 @@ def diff(snapshot: str, edited: str) -> dict:
             "spots": len(spots), "edit_words": n("author", "edit"),
             "cut_words": n("claude", "cut"), "added_words": n("author", "added"),
         },
+        "scenes": _scenes(snapshot, edited),
         "spots": spots,
     }
+
+
+def _scenes(snapshot: str, edited: str) -> list[dict]:
+    """Scene-level shape: each scene's opening and word count, draft vs edited,
+    matched by opening line so cut, added and moved scenes show up."""
+    def split(t: str) -> list[str]:
+        return [s.strip() for s in SCENE_BREAK.split(t) if s.strip()]
+    a, b = split(snapshot), split(edited)
+    key = lambda s: _norm(s.split("\n", 1)[0])[:40]  # noqa: E731
+    sm = difflib.SequenceMatcher(None, [key(s) for s in a], [key(s) for s in b], autojunk=False)
+    out = []
+    for op, i1, i2, j1, j2 in sm.get_opcodes():
+        for k in range(max(i2 - i1, j2 - j1)):
+            x = a[i1 + k] if i1 + k < i2 else ""
+            y = b[j1 + k] if j1 + k < j2 else ""
+            opens = " ".join((x or y).split("\n", 1)[0].split()[:8])
+            out.append({"opens": opens, "draft_words": len(x.split()),
+                        "edited_words": len(y.split()), "change": "same" if op == "equal" else op})
+    return out
+
+
+SCENE_BREAK = re.compile(r"(?m)^\s*(?:[—–-]{1,3}|[*_]{3,}|⁂|#)\s*$")
 
 
 def main(argv: list[str]) -> None:

@@ -163,10 +163,11 @@ Use the ledger:
   `Profile rebuilt` line in the ledger (each `edits` entry with spots counts
   as 5), or when asked, call
   `build_style_profile` with `samples` = `samples.md` + every `author-edited`
-  chosen text whose edits were substantial (not a word or two) + every
-  `author-written` text from `edits` entries, and
-  `controls` = `controls.md` + every rejected text not marked
-  `author-written` (Claude's imitations the author turned down). Skip
+  chosen text whose edits were substantial (not a word or two) + the
+  `author` text of every `edit` and `added` spot in the `edits/*.json` files,
+  and `controls` = `controls.md` + every rejected text not marked
+  `author-written` (Claude's imitations the author turned down) + the
+  `claude` text of every `edit` and `cut` spot in those files. Skip
   replaced entries. Join each
   side with blank lines between texts; picks are short and only count pooled. A picked but
   unedited Claude passage goes in neither. Save the new profile over
@@ -196,13 +197,33 @@ being asked.
   24 hours (they may still be editing). Otherwise download both as
   `text/plain` (a big download is saved to a file; use that path) and run
   `python <this skill's folder>/scripts/edits.py SNAPSHOT DOC OUT.json`.
-- Append one entry: `### <date> · <chapter> · edits`, a `Why (inferred):`
-  line naming the 2–3 patterns their edits show (Claude's reading, so it
-  never outranks a reason the author stated), then `Chosen (author-edited):`
-  the `author` text of every `edit` spot and `Chosen (author-written):` every
-  `added` spot, and `Rejected:` the `claude` text of every `edit` and `cut`
-  spot, joined with ` / ` as in pick entries. No spots: append the entry with
-  `no substantive edits`. Then trash the snapshot: each draft is learned once.
+- Sanity check first: if the result has almost no spots, or the two docs share
+  a title or word count, you probably have the same version twice. Stop and
+  ask which doc is theirs.
+- Read every spot pair and the `scenes` list (scenes cut, added, moved or
+  resized) before concluding anything; the counts alone say nothing. Sort what
+  you find into three kinds, because each goes somewhere different:
+  - **Voice:** how they write a line (cut explanations, added interiority,
+    rougher dialogue, fewer callbacks). This is what the profile and the
+    standing rules learn from.
+  - **Story and character:** where they took the chapter (a character colder,
+    a reveal held back, an ending cut). Note it for the next brief; it isn't a
+    voice rule.
+  - **Canon:** facts they corrected (a name, an age, who did what). These
+    belong in the series bible and the ledger's standing rules.
+- Save `OUT.json` to an `edits` folder in `prose-forge` as
+  `<chapter>.json` (a plain file, like `style-profile.json`). It holds every
+  pair, which the profile rebuild needs; the ledger only gets the summary.
+- Append one entry: `### <date> · <chapter> · edits` with the file name, the
+  counts and the scene changes in a line each, `Why (inferred):` the voice
+  patterns, then `Story:` and `Canon:` lines, and 3–5 short representative
+  pairs (`Chosen (author-edited):` / `Rejected:`). Inferred reasons are
+  Claude's reading and never outrank a reason the author stated. No spots:
+  log `no substantive edits`. Then trash the snapshot: each draft is learned
+  once.
+- Ask the author once which inferred voice patterns and canon facts to make
+  standing rules, and add the ones they confirm to the ledger's Standing rules
+  as their own.
 - Tell the author in one line ("Learned from your edits to Ch39: 14
   rewrites, 3 cuts").
 - **Backfill** (a draft from before snapshots, or "learn from my edits to

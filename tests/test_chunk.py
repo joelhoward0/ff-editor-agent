@@ -35,3 +35,12 @@ def test_drive_markdown_and_names(tmp_path):
     text = chunk.load(src)
     assert "\\" not in text and "**" not in text
     assert chunk.names_extract(text) == "Then Jory waved at Magda!"
+
+
+def test_plain_text_pov_headings(tmp_path):
+    src = tmp_path / "part.txt"
+    src.write_text("Part 5\nJAMES[a][b]\nHe opens it.\nCOURTNEY\nTwo lines.\n"
+                   "JAMIE\nThe lamp flame.\n")
+    chunk.main(["split", str(src), str(tmp_path / "out")])
+    index = json.loads((tmp_path / "out/index.json").read_text())
+    assert [c["title"] for c in index][-3:] == ["JAMES", "COURTNEY", "JAMIE"]
