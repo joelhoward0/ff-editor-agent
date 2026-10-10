@@ -3,7 +3,8 @@
 Stdlib only, so it runs wherever the skill runs. Input is whatever you have on
 disk: a Google Docs `read_doc` result (raw or saved by the host as
 {"content": ...}), a Drive `read_file_content` result ({"fileContent": ...}),
-or plain text/markdown.
+a Drive `download_file_content` result (base64 {"content", "mimeType"}), or
+plain text/markdown.
 
     python chunk.py split SRC OUTDIR [--max-words 6000]
         one file per chapter (split further at scene breaks or paragraphs if a
@@ -17,6 +18,7 @@ or plain text/markdown.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import re
 import sys
@@ -36,6 +38,8 @@ def load(src: Path) -> str:
         data = json.loads(raw)
     except ValueError:
         return raw
+    if isinstance(data, dict) and "mimeType" in data and isinstance(data.get("content"), str):
+        return base64.b64decode(data["content"]).decode("utf-8-sig")  # Drive download
     data = data.get("content", data) if isinstance(data, dict) else data
     if isinstance(data, dict) and "fileContent" in data:
         return MD_ESCAPE.sub(r"\1", data["fileContent"]).replace("**", "")

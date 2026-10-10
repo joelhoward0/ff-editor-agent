@@ -94,7 +94,8 @@ in chat or retype it:
 
 ## Every draft
 
-1. **Load the real voice:** `voice-card.md`, plus the last ~2,000 words of the
+1. **Load the real voice.** First learn from any drafts the author has edited
+   since (see Learning from their edits). Then `voice-card.md`, plus the last ~2,000 words of the
    author's own most recent chapter (their prose, not a Claude draft). Then the
    canon: series bible, character notes, the previous chapter or two.
 2. **Draft** from the brief, matching the voice card and the excerpt over any
@@ -113,7 +114,9 @@ in chat or retype it:
 5. **Continuity:** `check_continuity(draft, canon)`. Fix `near_misses`; list
    `new_names` for the author to confirm. Long canon: pass `chunk.py names`
    extracts (see Large files).
-6. **Hand back** the chapter and one line: verdict, tells fixed, new names.
+6. **Hand back** the chapter as a Google Doc (claude.ai) and one line:
+   verdict, tells fixed, new names. Then snapshot it so their edits can be
+   learned later (see Learning from their edits).
 
 ## Triage before revising
 
@@ -157,9 +160,11 @@ Use the ledger:
 - **Before drafting:** after the voice card, read the last ~5 ledger entries
   (chosen text + why). Their stated reasons outrank the voice card.
 - **Rebuilding the profile:** when 10 entries have accrued since the last
-  `Profile rebuilt` line in the ledger (or when asked), call
+  `Profile rebuilt` line in the ledger (each `edits` entry with spots counts
+  as 5), or when asked, call
   `build_style_profile` with `samples` = `samples.md` + every `author-edited`
-  chosen text whose edits were substantial (not a word or two), and
+  chosen text whose edits were substantial (not a word or two) + every
+  `author-written` text from `edits` entries, and
   `controls` = `controls.md` + every rejected text not marked
   `author-written` (Claude's imitations the author turned down). Skip
   replaced entries. Join each
@@ -172,3 +177,35 @@ Use the ledger:
 
 Revising the author's own prose: steps 3–5 only, and propose before/after
 pairs instead of rewriting; it's their text.
+
+## Learning from their edits
+
+When the author edits a draft Claude handed back, each rewritten paragraph is
+the best evidence there is: Claude's version next to theirs. Learn it without
+being asked.
+
+- **At handoff** (Every draft, step 6): copy the draft doc with Drive
+  `copy_file` into the `prose-forge` folder, titled `snapshot: <doc title>`
+  (a server-side copy; no prose passes through chat). Append to the ledger
+  `### <date> · <chapter> · handed back`, with the doc's ID and the
+  snapshot's ID.
+- **Learn** at the start of every draft or revision session, before reading
+  the ledger, and whenever the author says "learn from my edits": for each
+  `handed back` line with no later `edits` entry for that doc, or whose doc
+  has changed since its last `edits` entry, get the doc's metadata. Skip it if
+  it's unchanged since the snapshot, or was modified in the last 24 hours
+  (they may still be editing). Otherwise download both as `text/plain` (a big
+  download is saved to a file; use that path) and run
+  `python <this skill's folder>/scripts/edits.py SNAPSHOT DOC OUT.json`.
+- Append one entry: `### <date> · <chapter> · edits` with `Doc modified:
+  <modifiedTime>`, a `Why (inferred):` line naming the 2–3 patterns their
+  edits show (Claude's reading, so it never outranks a reason the author
+  stated), then `Chosen (author-edited):` the `author` text of every `edit`
+  spot and `Chosen (author-written):` every `added` spot, and `Rejected:` the
+  `claude` text of every `edit` and `cut` spot, joined with ` / ` as in pick
+  entries. A re-learn of the same doc is marked `replaces the entries above
+  for <doc>`. No spots: append the entry with `no substantive edits`.
+- Tell the author in one line ("Learned from your edits to Ch39: 14
+  rewrites, 3 cuts").
+- No code execution: read both docs and compare them by hand only if they're
+  short; otherwise say it waits for a session that can run the script.
