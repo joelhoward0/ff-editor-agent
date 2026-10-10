@@ -12,6 +12,25 @@ to; Claude follows them into polished literary prose the author doesn't
 write. Fixing numbers afterwards barely helps. So: load the real voice first,
 draft, then use the prose-forge tools as a gate.
 
+## Signed-in connection (prose-forge has `load_voice`)
+
+If the prose-forge tools include `load_voice`, the author signed in with
+Google: their voice card, style profile and voice ledger live in a
+`prose-forge` folder in their own Drive, managed by the tools. Then:
+
+- Start every draft or revision with `load_voice`; it returns the voice card
+  and their recent picks, and retrains the profile when enough picks accrue.
+- `check_draft` uses the saved profile; don't pass one.
+- `build_style_profile` saves profile, samples and controls to their Drive.
+- A `[prose-forge pick]` message ending "(Saved to your voice ledger.)" is
+  already recorded. Without that line, call `record_pick` yourself.
+- First time, if `load_voice` has no voice card or profile but the author has
+  them elsewhere (e.g. "Voice Card" and style-profile.json in Drive), read them
+  and import with `save_voice_file`. A profile built before signing in has no
+  samples saved, so retraining needs one `build_style_profile` run.
+- The file steps below (voice-card.md, style-profile.json, voice-ledger.md)
+  are for the open connection only.
+
 ## One-time setup (no style-profile.json yet)
 
 1. **Collect samples:** 15,000–30,000 words the author wrote themselves, never

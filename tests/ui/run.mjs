@@ -3,6 +3,7 @@
 //   cd tests/ui && npm install && npm test        (or: node run.mjs <app.html>)
 // Exits non-zero unless the handshake completes, the app sizes itself, and a
 // pick arrives as a valid ui/message, and a changed pick is sent as a correction.
+// Runs twice: a host without record_pick (Claude records), and one with it (saved).
 import { chromium } from 'playwright';
 import fs from 'fs';
 
@@ -14,13 +15,14 @@ const args = {
   labels: [], context: 'Ch 38 hotspot',
 };
 
+async function runOnce(saving) {
 const b = await chromium.launch();
 const p = await b.newPage({ viewport: { width: 840, height: 700 } });
 const consoleLines = [];
 p.on('console', (m) => consoleLines.push(m.text()));
 await p.setContent('<!doctype html><body style="margin:0"></body>');
 await p.addScriptTag({ content: bundle });
-await p.evaluate(([h, a]) => window.runHost(h, a), [app, args]);
+await p.evaluate(([h, a, sv]) => window.runHost(h, a, sv), [app, args, saving]);
 await p.waitForTimeout(1500);
 
 const events = () => p.evaluate(() => window.events);
@@ -44,11 +46,29 @@ if (ok.initialized) {
   const [first, second] = await messages();
   ok.message = !!first && valid(first) && first.content[0].text.includes('I chose C');
   ok.changedMind = !!second && valid(second) && /Changed my mind[\s\S]*I chose B \(with my edits\)/.test(second.content[0].text);
+  const savedNote = (m) => m.content[0].text.endsWith('(Saved to your voice ledger.)');
+  const calls = (await events()).filter((e) => e[0] === 'toolcall').map((e) => e[1]);
+  if (saving) {
+    // both sends saved under ONE pick id, the second with the edited text
+    ok.saved = calls.length === 2 && calls.every((c) => c.name === 'record_pick')
+      && calls[0].arguments.pick_id === calls[1].arguments.pick_id
+      && calls[0].arguments.chosen === 2 && calls[1].arguments.chosen === 1
+      && calls[1].arguments.chosen_text.startsWith('There was a vote, and he sat there')
+      && calls[1].arguments.passages[1] === args.passages[1]
+      && savedNote(first) && savedNote(second);
+  } else {
+    ok.unsavedFallback = calls.length === 0 && !savedNote(first) && !savedNote(second);
+  }
   await p.screenshot({ path: '/tmp/picker.png' });
 }
 await b.close();
-console.log('RESULT', JSON.stringify(ok), 'iframe height', height);
-if (!(ok.initialized && ok.sized && ok.selectDoesNotSend && ok.message && ok.changedMind)) {
+console.log(saving ? 'SAVING' : 'RESULT', JSON.stringify(ok), 'iframe height', height);
+if (!Object.values(ok).every(Boolean)) {
   console.log('HOST CONSOLE', JSON.stringify(consoleLines));
-  process.exit(1);
+  return false;
 }
+return true;
+}
+
+const results = [await runOnce(false), await runOnce(true)];
+if (!results.every(Boolean)) process.exit(1);

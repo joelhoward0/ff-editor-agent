@@ -2,7 +2,7 @@ import { AppBridge, PostMessageTransport } from "@modelcontextprotocol/ext-apps/
 const w = window as any;
 w.events = [];
 const log = (e: string, d?: unknown) => w.events.push([e, d]);
-w.runHost = async (html: string, args: unknown) => {
+w.runHost = async (html: string, args: unknown, saving = false) => {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("sandbox", "allow-scripts");
   iframe.style.cssText = "width:820px;height:0;border:0"; // like a host before size-changed
@@ -12,6 +12,12 @@ w.runHost = async (html: string, args: unknown) => {
   bridge.oninitialized = () => { log("initialized"); bridge.sendToolInput({ arguments: args as any }); };
   bridge.onsizechange = async (p) => { log("size", p); if (p.height) iframe.style.height = p.height + "px"; };
   bridge.onmessage = async (p) => { log("message", p); return {}; };
+  if (saving) {  // stand-in for a signed-in server that has record_pick
+    bridge.oncalltool = async (p) => {
+      log("toolcall", p);
+      return { content: [{ type: "text", text: JSON.stringify({ saved: true }) }] };
+    };
+  }
   (bridge as any).onerror = (e: unknown) => log("bridge-error", String(e));
   const loaded = new Promise((r) => (iframe.onload = r));
   iframe.srcdoc = html;

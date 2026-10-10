@@ -50,6 +50,9 @@ let nextId = 1; const pending = new Map();
 let passages = []; let originals = [];
 let selected = null; // card index, "none", or null
 let lastSent = null; // text of the last message delivered to Claude
+let pickContext = "";
+// One id per picker: a changed pick re-saves under it and replaces the entry.
+const pickId = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
 
 function request(method, params) {
   const id = nextId++;
@@ -73,6 +76,7 @@ function render(args) {
   passages = args.passages.map(String); originals = passages.slice();
   const labels = args.labels || [];
   if (args.context) document.getElementById("context").textContent = args.context;
+  pickContext = String(args.context || "");
   const grid = document.getElementById("grid"); grid.innerHTML = "";
   passages.forEach((text, i) => {
     const label = String.fromCharCode(65 + i);
@@ -122,11 +126,27 @@ function refresh() {
 
 function select(choice) { selected = selected === choice ? null : choice; refresh(); }
 
+// Signed-in connections can save the pick straight to the author's Drive
+// ledger. Elsewhere the tool doesn't exist and Claude records it instead.
+async function saveToLedger() {
+  const chosen = selected === "none" ? null : selected;
+  const call = request("tools/call", { name: "record_pick", arguments: {
+    pick_id: pickId, passages: originals, chosen,
+    chosen_text: chosen === null ? null : passages[chosen],
+    why: document.getElementById("why").value.trim(), context: pickContext,
+  } });
+  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000));
+  try { const r = await Promise.race([call, timeout]); return !(r && r.isError); }
+  catch { return false; }
+}
+
 async function send() {
   const body = compose(); if (body === null) return;
-  const text = lastSent === null
+  const saved = await saveToLedger();
+  const text = (lastSent === null
     ? `[prose-forge pick] ${body}`
-    : `[prose-forge pick] Changed my mind; this replaces my previous pick. ${body}`;
+    : `[prose-forge pick] Changed my mind; this replaces my previous pick. ${body}`)
+    + (saved ? "\n(Saved to your voice ledger.)" : "");
   const status = document.getElementById("status");
   try {
     await request("ui/message", { role: "user", content: [{ type: "text", text }] });
