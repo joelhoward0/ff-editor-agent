@@ -94,7 +94,8 @@ in chat or retype it:
 
 ## Every draft
 
-1. **Load the real voice:** `voice-card.md`, plus the last ~2,000 words of the
+1. **Load the real voice.** First learn from any drafts the author has edited
+   since (see Learning from their edits). Then `voice-card.md`, plus the last ~2,000 words of the
    author's own most recent chapter (their prose, not a Claude draft). Then the
    canon: series bible, character notes, the previous chapter or two.
 2. **Draft** from the brief, matching the voice card and the excerpt over any
@@ -113,7 +114,9 @@ in chat or retype it:
 5. **Continuity:** `check_continuity(draft, canon)`. Fix `near_misses`; list
    `new_names` for the author to confirm. Long canon: pass `chunk.py names`
    extracts (see Large files).
-6. **Hand back** the chapter and one line: verdict, tells fixed, new names.
+6. **Hand back** the chapter as a Google Doc (claude.ai) and one line:
+   verdict, tells fixed, new names. Then snapshot it so their edits can be
+   learned later (see Learning from their edits).
 
 ## Triage before revising
 
@@ -157,11 +160,14 @@ Use the ledger:
 - **Before drafting:** after the voice card, read the last ~5 ledger entries
   (chosen text + why). Their stated reasons outrank the voice card.
 - **Rebuilding the profile:** when 10 entries have accrued since the last
-  `Profile rebuilt` line in the ledger (or when asked), call
+  `Profile rebuilt` line in the ledger (each `edits` entry with spots counts
+  as 5), or when asked, call
   `build_style_profile` with `samples` = `samples.md` + every `author-edited`
-  chosen text whose edits were substantial (not a word or two), and
-  `controls` = `controls.md` + every rejected text not marked
-  `author-written` (Claude's imitations the author turned down). Skip
+  chosen text whose edits were substantial (not a word or two) + the
+  `author` text of every `edit` and `added` spot in the `edits/*.json` files,
+  and `controls` = `controls.md` + every rejected text not marked
+  `author-written` (Claude's imitations the author turned down) + the
+  `claude` text of every `edit` and `cut` spot in those files. Skip
   replaced entries. Join each
   side with blank lines between texts; picks are short and only count pooled. A picked but
   unedited Claude passage goes in neither. Save the new profile over
@@ -172,3 +178,59 @@ Use the ledger:
 
 Revising the author's own prose: steps 3–5 only, and propose before/after
 pairs instead of rewriting; it's their text.
+
+## Learning from their edits
+
+When the author edits a draft Claude handed back, each rewritten paragraph is
+the best evidence there is: Claude's version next to theirs. Learn it without
+being asked.
+
+- **At handoff** (Every draft, step 6): copy the draft doc with Drive
+  `copy_file` into a `snapshots` folder inside `prose-forge` (create it if
+  missing), titled `snapshot: <doc title>`. It's a server-side copy; no prose
+  passes through chat. Append to the ledger `### <date> · <chapter> · handed
+  back`, with the doc's ID and the snapshot's ID.
+- **Learn** at the start of every draft or revision session, before reading
+  the ledger, and whenever the author says "learn from my edits": for each
+  `handed back` line with no later `edits` entry, get the doc's metadata.
+  Skip it if it's unchanged since the snapshot, or was modified in the last
+  24 hours (they may still be editing). Otherwise download both as
+  `text/plain` (a big download is saved to a file; use that path) and run
+  `python <this skill's folder>/scripts/edits.py SNAPSHOT DOC OUT.json`.
+- Sanity check first: if the result has almost no spots, or the two docs share
+  a title or word count, you probably have the same version twice. Stop and
+  ask which doc is theirs.
+- Read every spot pair and the `scenes` list (scenes cut, added, moved or
+  resized) before concluding anything; the counts alone say nothing. Sort what
+  you find into three kinds, because each goes somewhere different:
+  - **Voice:** how they write a line (cut explanations, added interiority,
+    rougher dialogue, fewer callbacks). This is what the profile and the
+    standing rules learn from.
+  - **Story and character:** where they took the chapter (a character colder,
+    a reveal held back, an ending cut). Note it for the next brief; it isn't a
+    voice rule.
+  - **Canon:** facts they corrected (a name, an age, who did what). These
+    belong in the series bible and the ledger's standing rules.
+- Save `OUT.json` to an `edits` folder in `prose-forge` as
+  `<chapter>.json` (a plain file, like `style-profile.json`). It holds every
+  pair, which the profile rebuild needs; the ledger only gets the summary.
+- Append one entry: `### <date> · <chapter> · edits` with the file name, the
+  counts and the scene changes in a line each, `Why (inferred):` the voice
+  patterns, then `Story:` and `Canon:` lines, and 3–5 short representative
+  pairs (`Chosen (author-edited):` / `Rejected:`). Inferred reasons are
+  Claude's reading and never outrank a reason the author stated. No spots:
+  log `no substantive edits`. Then trash the snapshot: each draft is learned
+  once.
+- Ask the author once which inferred voice patterns and canon facts to make
+  standing rules, and add the ones they confirm to the ledger's Standing rules
+  as their own.
+- Tell the author in one line ("Learned from your edits to Ch39: 14
+  rewrites, 3 cuts").
+- **Backfill** (a draft from before snapshots, or "learn from my edits to
+  <chapter>"): the Claude side is the version Claude handed back, as its own
+  doc or a copy the author makes from Docs version history; the author side
+  is their finished chapter. If either sits inside a longer manuscript, cut
+  out just that chapter first (`chunk.py split`, or the text between its
+  heading and the next). Then run `edits.py` and log the entry as above.
+- No code execution: read both docs and compare them by hand only if they're
+  short; otherwise say it waits for a session that can run the script.
